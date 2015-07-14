@@ -2,20 +2,32 @@
 Common functions that will be used by all models
 '''
 import matplotlib.pyplot as plt
+import numpy as np
+import pdb
 
-def display_prediction(train, train_cleaned, prediction, index):
+def display_prediction(data, index, labels=None, cols=None, rows=None):
     '''
-    Display one of the original images next to the prediction
+    Display several versions of the same image.
+    
+    data:   iterable
+            each member of the iterable is of the same shape as training data
     '''
 
-    fig, ax = plt.subplots(3,1, num=2)
-    ax[0].imshow(train[index,0,:,:])
-    ax[0].axis('off')
-    ax[0].set_title('Original')
-    ax[1].imshow(train_cleaned[index,0,:,:])
-    ax[1].axis('off')
-    ax[1].set_title('Cleaned')
-    ax[2].imshow(prediction[index,0,:,:])
-    ax[2].axis('off')
-    ax[2].set_title('Predicted')
+    #pdb.set_trace()
+    if cols is None:
+        cols = 1
+    if rows is None:
+        rows = int(np.ceil(len(data)/cols))
+
+    fig, ax = plt.subplots(rows, cols, num=2)
+    for row in range(rows):
+        for col in range(cols):
+            i = row*cols+col
+            ax[row, col].imshow(data[i][index,0,:,:])
+            ax[row, col].axis('off')
+            try:
+                label = labels[i]
+                ax[row, col].set_title(label)
+            except:
+                pass
 

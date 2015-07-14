@@ -32,5 +32,5 @@ def predict(X, model):
     threshold = ( temp.max(axis=1) + temp.min(axis=1) )/2
     threshold = threshold.reshape(-1, 1, 1, 1)
 
-    prediction = np.where(prediction > threshold, np.ones_like(prediction), np.zeros_like(prediction))
+    prediction = np.where(prediction < threshold, np.ones_like(prediction), np.zeros_like(prediction))
     return prediction
