@@ -6,6 +6,7 @@ threshold per image such that the frequency of 1s and 0s is mainteined
 '''
 import numpy as np
 import matplotlib.pyplot as plt
+import code.utils
 import pdb
 
 def obtain_freq(Y,threshold):
@@ -51,6 +52,7 @@ def predict(X, threshold):
 
 def plot_train_hist(train, train_cleaned, bins=np.arange(0, 1.025, .05)):
     # compute a histogram of pixel intensities
+    #pdb.set_trace()
     hist1, _ = np.histogram(train, normed=True, bins=bins)
    
     # compute a histogram of pixel intensities after normalizing each image between 0 and 1
@@ -65,9 +67,9 @@ def plot_train_hist(train, train_cleaned, bins=np.arange(0, 1.025, .05)):
 
     #pdb.set_trace()
     fig, ax = plt.subplots(num=1)
-    ax.plot(bins[:-1], hist1, label='raw')
-    ax.plot(bins[:-1], hist2, label='normed')
-    ax.plot(bins[:-1], hist3, label='cleaned')
+    ax.plot(bins[:-1], hist1, label='raw', linewidth=3)
+    #ax.plot(bins[:-1], hist2, label='normed')
+    ax.plot(bins[:-1], hist3, label='cleaned', linewidth=3)
     ax.legend(loc='upper left')
-    plt.axis('image')
-
+    ax.set_ylabel('Probability')
+    ax.set_xlabel('Normalized Luminance')
