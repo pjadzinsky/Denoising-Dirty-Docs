@@ -19,7 +19,16 @@ def display_prediction(data, index, labels=None, cols=None, rows=None):
     if rows is None:
         rows = int(np.ceil(len(data)/cols))
 
-    fig, ax = plt.subplots(rows, cols, num=2)
+    fig, axes = plt.subplots(rows, cols, num=2)
+
+    for i, ax in enumerate(axes):
+        ax.imshow(data[i][index,0,:,:])
+        ax.axis('off')
+        try:
+            ax.set_title(labels[i])
+        except:
+            pass
+    """
     for row in range(rows):
         for col in range(cols):
             i = row*cols+col
@@ -30,4 +39,4 @@ def display_prediction(data, index, labels=None, cols=None, rows=None):
                 ax[row, col].set_title(label)
             except:
                 pass
-
+    """

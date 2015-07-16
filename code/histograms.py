@@ -7,6 +7,7 @@ threshold per image such that the frequency of 1s and 0s is mainteined
 import numpy as np
 import matplotlib.pyplot as plt
 import code.utils
+from scipy.fftpack import rfft, rfftfreq
 import pdb
 
 def obtain_freq(Y,threshold):
@@ -67,9 +68,70 @@ def plot_train_hist(train, train_cleaned, bins=np.arange(0, 1.025, .05)):
 
     #pdb.set_trace()
     fig, ax = plt.subplots(num=1)
+    ax.cla()
     ax.plot(bins[:-1], hist1, label='raw', linewidth=3)
     #ax.plot(bins[:-1], hist2, label='normed')
     ax.plot(bins[:-1], hist3, label='cleaned', linewidth=3)
     ax.legend(loc='upper left')
     ax.set_ylabel('Probability')
     ax.set_xlabel('Normalized Luminance')
+    ax.annotate('white', xy=(bins[-2],hist3[-1]), xytext=(0.8,15), fontsize=18, arrowprops=dict(facecolor='black', shrink=0.05),)
+    ax.annotate('black', xy=(bins[0],hist3[0]), xytext=(0.2,4), fontsize=18, arrowprops=dict(facecolor='black', shrink=0.05),)
+
+    fig.savefig('Distributions.png', transparent=True)
+
+def train_clean_diff(train, train_cleaned, bins=np.arange(0, 1.025, .05)):
+    temp = train - train_cleaned
+    hist, _ = np.histogram(temp, normed=True, bins=bins)
+    fig, ax = plt.subplots(num='Noise')
+    ax.cla()    # clears the axis
+    ax.plot(bins[:-1], hist, lw=3)
+    ax.set_xlabel('Luminance difference (ori - cleaned)')
+    ax.set_ylabel('Probability')
+    fig.savefig('Noise distribution.png', transparent=True)
+
+def get_correlation(cleaned, image):
+    # get and display the correlation of images with themself.
+
+    nb_images, _, h, w = cleaned.shape
+
+    """
+    if axis = 0:
+        im_set = [cleaned[i,0,:,:] for i in range(nb_images)]
+        images = np.hstack(im_set).mean(axis=1)
+    else:
+        images = cleaned.reshape(h*nb_images, w).mean(axis=0)
+    """
+    fig, ax = plt.subplots(num='Correlations', nrows=2)
+
+    #pdb.set_trace()
+    for i in range(2):
+        # i=0   vertical correlation
+        # i=1   horizontal correlation
+
+        line = cleaned[image,0,:,:].mean(i)
+        line -= line.mean()
+
+        # I want to do a circular correlation. I'm going to paste all but one point of 
+        # line to itself making its new length 2*len(line)-1
+        longline = np.concatenate((line[:-1], line))
+
+        corr = np.correlate(longline, line)     # default mode is valid, will be of length len(line)
+
+        # compute the FFT 
+        fft = rfft(corr)
+        freq = rfftfreq(len(corr))
+
+        if i==0:
+            label = 'vertical'
+        else:
+            label = 'horizontal'
+        ax[0].plot(corr, lw=2, label = label)
+        ax[0].set_xlabel('Pixels')
+        ax[0].legend(loc='upper center')
+    
+        ax[1].plot(freq, fft, lw=2, label= label)
+        ax[1].set_xlabel('Frequency')
+        ax[1].legend(loc='upper center')
+
+    fig.savefig('Correlations.png')
