@@ -11,7 +11,7 @@ import os
 import numpy as np
 import pdb
 
-def load_data():
+def load_data(flatten=False):
     folders = ['train', 'train_cleaned', 'test']
 
     output = []
@@ -35,9 +35,14 @@ def load_data():
             except:
                 pass
 
-    train = np.array(output[0]).reshape(-1, 1, 248, 540)
-    train_cleaned = np.array(output[1]).reshape(-1, 1, 248, 540)
-    test = np.array(output[2]).reshape(-1, 1, 248, 540)
+    train = np.array(output[0])
+    train_cleaned = np.array(output[1])
+    test = np.array(output[2])
+
+    if not flatten:
+        train = train.reshape(-1, 1, 248, 540)
+        train_cleaned = train_cleaned.reshape(-1, 1, 248, 540)
+        test = test.reshape(-1, 1, 248, 540)
 
     train = train.astype(np.float32)
     train_cleaned = train_cleaned.astype(np.float32)
