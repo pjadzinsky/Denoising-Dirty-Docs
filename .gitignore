@@ -2,3 +2,4 @@ __pycache__/
 train/
 train_cleaned/
 test/
+*.hdf5
