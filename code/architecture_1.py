@@ -1,11 +1,14 @@
 from keras.models import Sequential, Graph
-from keras.layers.core import Dense, Activation, Merge, Reshape, Flatten
+from keras.layers.core import Dense, Activation, Merge, Reshape, Flatten, Permute
 from keras.layers.convolutional import Convolution2D
 from keras.optimizers import SGD
-from keras.callbacks import ModelCheckpoint, Callback
+from keras.callbacks import ModelCheckpoint, Callback, SnapshotPrediction
 from code.load_data import load_data
 import numpy as np
 import pdb
+from matplotlib import cm
+import matplotlib.pyplot as plt
+import h5py
 
 class model(object):
     def __init__(self, weights_file=None, nb_filters=1):
@@ -13,15 +16,31 @@ class model(object):
 
         graph.add_input(name='input', ndim=4)
 
-        graph.add_node(Convolution2D(nb_filters, 1, 3, 3, border_mode='same'),
+        graph.add_node(Convolution2D(nb_filters, 1, 1, 1, border_mode='valid'),
                 name='scores_1a', input='input')
 
-        graph.add_node(Convolution2D(nb_filters, 1, 1, 1, border_mode='valid'),
+        graph.add_node(Convolution2D(nb_filters, 1, 3, 3, border_mode='same'),
                 name='scores_1b', input='input')
 
-        graph.add_node(Activation('relu'), name='activations_1', inputs=['scores_1a', 'scores_1b'], merge_mode='sum')
+        graph.add_node(Convolution2D(nb_filters, 1, 7, 7, border_mode='same'),
+                name='scores_1c', input='input')
 
-        graph.add_node(Convolution2D(1, nb_filters, 3, 3, border_mode='same'), 
+        graph.add_node(Permute((2,3,1)), 
+                name='scores_1a_permuted', input='scores_1a')
+
+        graph.add_node(Permute((2,3,1)),
+                name='scores_1b_permuted', input='scores_1b')
+
+        graph.add_node(Permute((2,3,1)),
+                name='scores_1c_permuted', input='scores_1c')
+
+        graph.add_node(Activation('relu'),
+                name='activations_1_permuted', inputs=['scores_1a_permuted', 'scores_1b_permuted', 'scores_1c_permuted'])
+
+        graph.add_node(Permute((3,1,2)),
+                name='activations_1', input='activations_1_permuted')
+
+        graph.add_node(Convolution2D(1, 3*nb_filters, 3, 3, border_mode='same'), 
                 name='scores_2', input='activations_1')
 
         graph.add_node(Activation('sigmoid'),
@@ -44,13 +63,11 @@ class model(object):
         
         #savemodels = SaveModels()
         #history = LossHistory()
-        checkpointer = MyModelCheckpoint(filepath='temp.hdf5', verbose=1, save_best_only=False)
-        checkpred=SavePredictions(filepath="test_batch.hdf5")
+        checkpointer = ModelCheckpoint(filepath='model_weights.hdf5', verbose=1, save_best_only=False)
+        checkpred = SnapshotPrediction(filepath="model1_prediction.hdf5")
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
         #self.model.fit(X, Y, nb_epoch=nb_epoch, batch_size=32, show_accuracy=True, verbose=1, callbacks=[checkpointer])
-        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpred])
-        predictions = self.graph.predict({'input':X})
-        return predictions
+        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
 
 class model2(object):
     def __init__(self, weights_file=None, nb_filters=1):
@@ -76,7 +93,8 @@ class model2(object):
         #savemodels = SaveModels()
         #history = LossHistory()
         checkpointer = MyModelCheckpoint(filepath='temp.hdf5', verbose=1, save_best_only=False)
-        checkpred=SavePredictions(filepath="test_batch.hdf5")
+        checkpred=SnapshotPrediction(filepath="model2_prediction.hdf5")
+        #checkpred=SavePredictions(filepath="model2_ori.hdf5")
         #self.model.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
         #self.model.fit(X, Y, nb_epoch=nb_epoch, batch_size=32, show_accuracy=True, verbose=1, callbacks=[checkpointer])
         self.model.fit(X, Y, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpred])
@@ -103,6 +121,7 @@ class SavePredictions(Callback):
         filepath = self.filepath
         print('opening file, epoch=', epoch)
         try:
+            self.epoch=epoch    # will be used as dictionary key when saving predictions
             if epoch==0:
                 # Open HDF5 for saving
                 import os.path
@@ -127,7 +146,6 @@ class SavePredictions(Callback):
             else:
                 self.f = h5py.File(filepath, 'a')
 
-            self.epoch=epoch    # will be used as dictionary key when saving predictions
             print('file open as ', self.f)
         except:
             self.f.close()
@@ -163,3 +181,11 @@ class SavePredictions(Callback):
                 f.close()
         except:
             self.f.close()
+
+def save_pngs(snapshot_file, im_index, start_epoch=0):
+    f = h5py.File(snapshot_file, 'r')
+    for i,k in enumerate(f):
+        #pdb.set_trace()
+        plt.imshow(f[k].get('output')[im_index,0,:,:], cmap=cm.Greys)
+        plt.gcf().savefig('prediction_im{0}_epoch{1}.png'.format(im_index, start_epoch + i))
+

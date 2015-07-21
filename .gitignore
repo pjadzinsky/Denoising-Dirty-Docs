@@ -3,3 +3,4 @@ train/
 train_cleaned/
 test/
 *.hdf5
+*.png
