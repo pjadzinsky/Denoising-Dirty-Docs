@@ -1,6 +1,8 @@
+.DS_[Ss]tore
 __pycache__/
 train/
 train_cleaned/
 test/
 *.hdf5
 *.png
+*.pyc

@@ -2,8 +2,8 @@ from keras.models import Sequential, Graph
 from keras.layers.core import Layer, Dense, Activation, Merge, Reshape, Flatten, Permute
 from keras.layers.convolutional import Convolution2D
 from keras.optimizers import SGD
-from keras.callbacks import ModelCheckpoint, Callback, SnapshotPrediction
-from code.load_data import load_data
+from keras.callbacks import ModelCheckpoint, Callback#, SnapshotPrediction
+import load_data
 from theano import tensor
 import numpy as np
 import pdb
@@ -83,7 +83,7 @@ class model(object):
             graph.load_weights(weights_file)
 
         sgd = SGD(lr=.1)
-        graph.compile('RMSprop', {'output':'mse'})
+        graph.compile(sgd, {'output':'mse'})
 
         self.graph = graph
         self.model = model
@@ -98,10 +98,10 @@ class model(object):
         #history = LossHistory()
         model = 'model{0}'.format(self.model)
         checkpointer = ModelCheckpoint(filepath=model + '_weights.hdf5', verbose=1, save_best_only=False)
-        checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
+        #checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
-        #self.model.fit(X, Y, nb_epoch=nb_epoch, batch_size=32, show_accuracy=True, verbose=1, callbacks=[checkpointer])
-        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
+        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer])
+        #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
 
         return self
 
