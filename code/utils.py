@@ -2,7 +2,9 @@
 Common functions that will be used by all models
 '''
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import numpy as np
+import h5py
 import pdb
 
 def display_prediction(data, index, labels=None, cols=None, rows=None):
@@ -40,3 +42,18 @@ def display_prediction(data, index, labels=None, cols=None, rows=None):
             except:
                 pass
     """
+
+def save_pngs(snapshot_file, im_index, name_offset=0, epochs=None):
+    f = h5py.File(snapshot_file, 'r')
+    for i,k in enumerate(f):
+        if epochs is not None:
+            # only write images for epochs requested
+            if i not in epochs:
+                continue
+
+        #pdb.set_trace()
+        plt.imshow(f[k].get('output')[im_index,0,:,:], cmap=cm.Greys)
+        plt.gcf().savefig('prediction_im{0}_epoch{1}.png'.format(im_index, name_offset + i))
+
+    f.close()
+

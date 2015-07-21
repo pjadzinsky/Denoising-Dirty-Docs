@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import code.utils
 from scipy.fftpack import rfft, rfftfreq
+from scipy.signal import convolve2d
 import pdb
 
 def obtain_freq(Y,threshold):
@@ -90,37 +91,36 @@ def train_clean_diff(train, train_cleaned, bins=np.arange(0, 1.025, .05)):
     ax.set_ylabel('Probability')
     fig.savefig('Noise distribution.png', transparent=True)
 
-def get_correlation(cleaned, image):
+def get_correlation(image):
     # get and display the correlation of images with themself.
 
-    nb_images, _, h, w = cleaned.shape
+    h, w = image.shape
 
-    """
-    if axis = 0:
-        im_set = [cleaned[i,0,:,:] for i in range(nb_images)]
-        images = np.hstack(im_set).mean(axis=1)
-    else:
-        images = cleaned.reshape(h*nb_images, w).mean(axis=0)
-    """
     fig, ax = plt.subplots(num='Correlations', nrows=2)
 
+    filter_size = []
     #pdb.set_trace()
     for i in range(2):
         # i=0   vertical correlation
         # i=1   horizontal correlation
 
-        line = cleaned[image,0,:,:].mean(i)
+        line = image.mean(axis=i)
         line -= line.mean()
 
         # I want to do a circular correlation. I'm going to paste all but one point of 
         # line to itself making its new length 2*len(line)-1
         longline = np.concatenate((line[:-1], line))
 
-        corr = np.correlate(longline, line)     # default mode is valid, will be of length len(line)
+        corr = np.correlate(longline, line)     # default mode is valid, corr will be of length len(line)
 
         # compute the FFT 
         fft = rfft(corr)
         freq = rfftfreq(len(corr))
+
+        freq_of_max = freq[fft.argmax()]
+        filter_size.append(np.round(1/freq_of_max))
+        print('max achieved at freq: {0}'.format(freq_of_max))
+        print('Distance between symbols is {0} pixels'.format(filter_size[0]))
 
         if i==0:
             label = 'vertical'
@@ -135,3 +135,30 @@ def get_correlation(cleaned, image):
         ax[1].legend(loc='upper center')
 
     fig.savefig('Correlations.png')
+    return filter_size 
+
+def filter_image(image, filter_size, threshold=None):
+    '''
+    Smooth image with a filter (2d convolution)
+    '''
+    filter= np.ones(filter_size) / (filter_size[0]*filter_size[1])
+    filtered = convolve2d(image, filter, mode='same', fillvalue=image.mean())
+
+    nrows = 2   # for the plot
+    if threshold is not None:
+        nrows += 1
+        thresh = filtered > threshold
+
+    fig = plt.figure('filtered_image')
+    fig.clf()
+    fig, ax = plt.subplots(num='filtered_image', nrows=nrows)
+
+    ax[0].imshow(image)
+    ax[1].imshow(filtered)
+
+    if threshold is not None:
+        ax[2].imshow(thresh)
+
+    fig.savefig('filtered image')
+
+    
