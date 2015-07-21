@@ -86,7 +86,7 @@ class model(object):
         graph.compile(sgd, {'output':'mse'})
 
         self.graph = graph
-        self.model = model
+        self.model_nb = model
             
             
     def fit(self, X, Y, nb_epoch, logs={}):
@@ -96,9 +96,9 @@ class model(object):
         
         #savemodels = SaveModels()
         #history = LossHistory()
-        model = 'model{0}'.format(self.model)
-        checkpointer = ModelCheckpoint(filepath=model + '_weights.hdf5', verbose=1, save_best_only=False)
-        #checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
+        model = 'model{0}'.format(self.model_nb)
+        checkpointer = MyModelCheckpoint(model, 0, [0,2,4], verbose=1, save_best_only=False)
+        checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
         self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer])
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
@@ -107,9 +107,18 @@ class model(object):
 
 class MyModelCheckpoint(ModelCheckpoint):
     
+    def __init__(self, prefix, epoch_offset, save_epochs, monitor='val_loss', verbose=0, save_best_only=False):
+        super(MyModelCheckpoint, self).__init__('', monitor=monitor, verbose=verbose, save_best_only=save_best_only)
+        self.prefix = prefix
+        self.epoch_offset = epoch_offset
+        self.save_epochs=save_epochs
+
     def on_epoch_end(self, epoch, logs={}):
-        self.filepath = 'weights_' + str(epoch) + '.hdf5'
-        super(MyModelCheckpoint, self).on_epoch_end(epoch, logs)
+        save_epochs = self.save_epochs
+        pdb.set_trace()
+        if epoch in save_epochs:
+            self.filepath = '{0}_weights_epoch{1}.hdf5'.format(self.prefix, epoch)
+            super(MyModelCheckpoint, self).on_epoch_end(epoch, logs)
         
 class SavePredictions(Callback):
     def __init__(self, filepath, verbose=0):
