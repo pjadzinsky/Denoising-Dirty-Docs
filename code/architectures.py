@@ -3,7 +3,7 @@ from keras.layers.core import Layer, Dense, Activation, Merge, Reshape, Flatten,
 from keras.layers.convolutional import Convolution2D
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, History, Callback#, SnapshotPrediction
-import load_data
+from code import load_data
 from theano import tensor
 import numpy as np
 import pdb
@@ -293,7 +293,7 @@ class SaveInput(Layer):
         return X
 
 
-def savePredictions(data):
+def savePredictions(nb_model, nb_filters, data):
     '''
     Load the model and predict the output to data
     '''
@@ -301,7 +301,8 @@ def savePredictions(data):
     import re
     from os import listdir
 
-    regex = re.compile('model(\d*)_weights_epoch(\d*)\.hdf5')
+    #pdb.set_trace()
+    regex = re.compile('model{0}_weights_epoch(\d*)\.hdf5'.format(nb_model))
     weight_files = [f for f in listdir('.') if regex.search(f)]
     
     data = data.reshape(1, 1, data.shape[0], data.shape[1])
@@ -310,16 +311,15 @@ def savePredictions(data):
 
     for f in weight_files:
         tokens = (regex.split(f))
-        model_type = int(tokens[1])
-        epoch = tokens[2]
+        epoch = int(tokens[1])
 
         if my_model is None:
-             my_model = model(model_type)
+             my_model = model(nb_model, nb_filters=nb_filters)
         
         my_model.model_init(f)
 
         prediction = my_model.graph.predict({'input':data})
 
         plt.imshow(prediction['output'][0,0,:,:])
-        plt.savefig('prediction_model{0}_epoch{1}.png'.format(model_type, epoch))
+        plt.savefig('prediction_model{0}_epoch{1}.png'.format(nb_model, epoch))
 
