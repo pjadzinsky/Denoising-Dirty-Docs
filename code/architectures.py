@@ -2,7 +2,7 @@ from keras.models import Sequential, Graph
 from keras.layers.core import Layer, Dense, Activation, Merge, Reshape, Flatten, Permute
 from keras.layers.convolutional import Convolution2D
 from keras.optimizers import SGD
-from keras.callbacks import ModelCheckpoint, Callback#, SnapshotPrediction
+from keras.callbacks import ModelCheckpoint, History, Callback#, SnapshotPrediction
 import load_data
 from theano import tensor
 import numpy as np
@@ -51,7 +51,7 @@ class model(object):
 
             graph.add_output(name='output', input='activations_2')
 
-        if model==2:
+        elif model==2:
             # Compute the average image across channels, it will be used as another input on each pixel latter on
             graph.add_node(MeanImage(), 
                     name='mean', input='input')
@@ -79,30 +79,77 @@ class model(object):
 
             graph.add_output(name='output', input='activations_1')
 
-        if weights_file is not None:
-            graph.load_weights(weights_file)
+        elif model==3:
+            # 3 conv layers with different filter sizes and a Mean intensity that get merged 
+            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
+                    name='scores_1a', input='input')
+
+            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
+                    name='scores_1b', input='input')
+
+            # Compute the average image across channels, it will be used as another input on each pixel latter on
+            graph.add_node(MeanImage(), 
+                    name='mean', input='input')
+            
+            graph.add_node(Permute((2,3,1)), 
+                    name='scores_1a_permuted', input='scores_1a')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='scores_1b_permuted', input='scores_1b')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='input_permuted', input='input')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='mean_permuted', input='mean')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_1_permuted', inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'])
+
+            graph.add_node(Permute((3,1,2)),
+                    name='activations_1', input='activations_1_permuted')
+
+            graph.add_node(Convolution2D(1, 2*nb_filters + 2, 5, 5, border_mode='same'), 
+                    name='scores_2', input='activations_1')
+
+            graph.add_node(Activation('sigmoid'),
+                    name='activations_2', input='scores_2')
+
+            graph.add_output(name='output', input='activations_2')
 
         sgd = SGD(lr=.1)
         graph.compile(sgd, {'output':'mse'})
 
         self.graph = graph
         self.model_nb = model
+
+    def model_init(self, weights_file=None):
+        if weights_file is not None:
+            self.graph.load_weights(weights_file)
             
             
-    def fit(self, X, Y, nb_epoch, logs={}):
+    def fit(self, X, Y, nb_epoch, save_models=[], logs={}):
         # X, Y are 3D arrays such that X.shape[0] is the number of samples
         # and X[0] is an image (shapes for Y are the same as for X)
         #pdb.set_trace()
         
         #savemodels = SaveModels()
-        #history = LossHistory()
         model = 'model{0}'.format(self.model_nb)
-        checkpointer = MyModelCheckpoint(model, 0, [0,2,4], verbose=1, save_best_only=False)
-        checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
-        #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
-        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer])
-        #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
+        history = History()
+        checkpointer = MyModelCheckpoint(model, 0, save_models, verbose=1, save_best_only=False)
+        #checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
 
+        #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
+        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, history])
+        #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
+        output = np.array(history.history['output'])
+        f = h5py.File('model{0}_loss.hdf5'.format(self.model_nb), 'w')
+        g = f.parent
+        dset = g.create_dataset('output', output.shape, dtype=output.dtype)
+        dset[:] = output
+        f.flush()
+        f.close()
+        print(history.history)
         return self
 
 class MyModelCheckpoint(ModelCheckpoint):
@@ -115,7 +162,6 @@ class MyModelCheckpoint(ModelCheckpoint):
 
     def on_epoch_end(self, epoch, logs={}):
         save_epochs = self.save_epochs
-        pdb.set_trace()
         if epoch in save_epochs:
             self.filepath = '{0}_weights_epoch{1}.hdf5'.format(self.prefix, epoch)
             super(MyModelCheckpoint, self).on_epoch_end(epoch, logs)
@@ -245,3 +291,35 @@ class SaveInput(Layer):
         f.close()
 
         return X
+
+
+def savePredictions(data):
+    '''
+    Load the model and predict the output to data
+    '''
+
+    import re
+    from os import listdir
+
+    regex = re.compile('model(\d*)_weights_epoch(\d*)\.hdf5')
+    weight_files = [f for f in listdir('.') if regex.search(f)]
+    
+    data = data.reshape(1, 1, data.shape[0], data.shape[1])
+
+    my_model = None
+
+    for f in weight_files:
+        tokens = (regex.split(f))
+        model_type = int(tokens[1])
+        epoch = tokens[2]
+
+        if my_model is None:
+             my_model = model(model_type)
+        
+        my_model.model_init(f)
+
+        prediction = my_model.graph.predict({'input':data})
+
+        plt.imshow(prediction['output'][0,0,:,:])
+        plt.savefig('prediction_model{0}_epoch{1}.png'.format(model_type, epoch))
+

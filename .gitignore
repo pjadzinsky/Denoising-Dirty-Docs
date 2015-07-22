@@ -6,3 +6,5 @@ test/
 *.hdf5
 *.png
 *.pyc
+*.swo
+*.swp
