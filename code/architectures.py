@@ -3,7 +3,7 @@ from keras.layers.core import Layer, Dense, Activation, Merge, Reshape, Flatten,
 from keras.layers.convolutional import Convolution2D
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, History, Callback#, SnapshotPrediction
-from code import load_data
+import load_data
 from theano import tensor
 import numpy as np
 import pdb
