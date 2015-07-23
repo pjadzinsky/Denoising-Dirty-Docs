@@ -264,72 +264,6 @@ class SavePredictions(Callback):
                         overwrite = get_input('Enter "y" (overwrite) or "n" (cancel).')
                     if overwrite == 'n':
                         return
-                    print('[TIP] Next time specify overwrite=True in save_weights!')
-
-                    self.f = h5py.File(filepath, 'w')
-                else:
-                    self.f = h5py.File(filepath, 'w')
-            else:
-                self.f = h5py.File(filepath, 'a')
-
-            print('file open as ', self.f)
-        except:
-            self.f.close()
-
-    def on_batch_begin(self, batch, logs={}):
-        try:
-            if batch==0:
-                X = self.model.batch
-                if type(self.model)==Graph:
-                    X = {name:value for (name, value) in zip(self.model.input_order, X)}
-                elif type(self.model)==Sequential:
-                    X = X[0]
-
-                predictions = self.model.predict(X)
-
-                # save to file
-                f = self.f
-                print('about to create group in file')
-                g = f.create_group(str(self.epoch))
-                print('group created')
-                if type(self.model)==Graph:
-                    for name in predictions:
-                        dset = g.create_dataset(name, predictions[name].shape, dtype=predictions[name].dtype)
-                        dset[:] = predictions[name]
-                elif type(self.model)==Sequential:
-                    # Check this works as expected
-                    dset = g.create_dataset('output', predictions.shape, dtype=predictions.dtype)
-                    dset[:] = predictions
-
-                f.flush()
-                f.close()
-        except:
-            self.f.close()
-
-
-class MeanImage(Layer):
-    '''
-        Generate an image (1, c, w, h) with mean intensity everywhere
-
-        Dimensions of input are assumed to be (nb_samples, c, w, h).
-        Return tensor has the same shape.
-    '''
-    def get_output(self, train=False):
-        '''
-        I want a 4D tensor with shape (n, c, r, w)
-        Where out[j,i,:,:] are all the same value (the mean luminance for channel i, image j)
-
-        I'll make the 4D tensor with 'tensordot' where the 1st tensor will have shape (n, c, 1, 1) (with the mean
-        luminance value for each image and channel) and the 2nd tensor has shape (1, 1, r, w) and all the values are
-        1
-        '''
-        X = self.get_input(train)           # X is a 4D tensor
-        input_shape = X.shape
-
-
-        X = X.mean(axis=2, keepdims=True)   # after this, X is a 4D tensor with shape (n, c, 1, w)
-        X = X.mean(axis=3, keepdims=True)   # after this, X is a 4D tensor wiht shape (n, c, 1, 1)
-
         out = tensor.ones([1, 1, input_shape[2], input_shape[3]])     # shape is (1, 1, r, w) 
 
         #multiply X and out summing over (getting rid of) dimensions with 1s
@@ -386,6 +320,6 @@ def savePredictions(nb_model, nb_filters, data):
 
         prediction = my_model.graph.predict({'input':data})
 
-        plt.imshow(prediction['output'][0,0,:,:], cmap=cm.Greys_r)
+        plt.imshow(prediction['output'][0,0,:,:])
         plt.savefig('prediction_model{0}_epoch{1}.png'.format(nb_model, epoch))
 
