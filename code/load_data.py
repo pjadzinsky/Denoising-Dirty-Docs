@@ -62,6 +62,6 @@ def load_data(sets_to_load):
                 except:
                     pass
 
-            output[-1] = np.array(output[-1]).reshape(-1, 248, 540)
+            output[-1] = np.array(output[-1]).reshape(-1, 1, 248, 540)
 
     return tuple(output)

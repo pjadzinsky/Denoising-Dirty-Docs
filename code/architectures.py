@@ -3,13 +3,15 @@ from keras.layers.core import Layer, Dense, Activation, Merge, Reshape, Flatten,
 from keras.layers.convolutional import Convolution2D
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, History, Callback#, SnapshotPrediction
-import load_data
+from . import load_data
 from theano import tensor
 import numpy as np
 import pdb
 from matplotlib import cm
 import matplotlib.pyplot as plt
 import h5py
+import re
+import os
 
 class model(object):
     def __init__(self, model, weights_file=None, nb_filters=1):
@@ -183,11 +185,131 @@ class model(object):
                     name='activations_3', input='scores_3')
 
             graph.add_output(name='output', input='activations_3')
+
+        elif model==5:
+            # Modification on model4, I'm preprocessing data by normalizing between 0 and 1.
+
+            # Layer 1
+            # =======
+            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
+            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
+                    name='scores_1a', input='input')
+
+            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
+                    name='scores_1b', input='input')
+
+            # Compute the average image across channels, it will be used as another input on each pixel latter on
+            graph.add_node(MeanImage(), 
+                    name='mean', input='input')
+            
+            graph.add_node(Permute((2,3,1)), 
+                    name='scores_1a_permuted', input='scores_1a')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='scores_1b_permuted', input='scores_1b')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='input_permuted', input='input')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='mean_permuted', input='mean')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_1_permuted', 
+                    inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'],
+                    merge_mode='concat')
+
+            graph.add_node(Permute((3,1,2)),
+                    name='activations_1', input='activations_1_permuted')
+
+            # Layer 2
+            # =======
+            graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 5, 5, border_mode='same'), 
+                    name='scores_2', input='activations_1')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_2', input='scores_2')
+
+            # Layer 3
+            # -------
+            graph.add_node(Convolution2D(1, nb_filters, 1, 1),
+                    name='scores_3', input='activations_2')
+
+            graph.add_node(Activation('sigmoid'),
+                    name='activations_3', input='scores_3')
+
+            graph.add_output(name='output', input='activations_3')
+            
+        elif model==5:
+            # Modification on model5, adding regularization.
+
+            # Layer 1
+            # =======
+            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
+            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same', W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)),
+                    name='scores_1a', input='input')
+
+            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'), W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)
+                    name='scores_1b', input='input')
+
+            # Compute the average image across channels, it will be used as another input on each pixel latter on
+            graph.add_node(MeanImage(), 
+                    name='mean', input='input')
+            
+            graph.add_node(Permute((2,3,1)), 
+                    name='scores_1a_permuted', input='scores_1a')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='scores_1b_permuted', input='scores_1b')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='input_permuted', input='input')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='mean_permuted', input='mean')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_1_permuted', 
+                    inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'],
+                    merge_mode='concat')
+
+            graph.add_node(Permute((3,1,2)),
+                    name='activations_1', input='activations_1_permuted')
+
+            # Layer 2
+            # =======
+            graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 5, 5,
+                border_mode='same',
+                W_regularizer=l2(0.01),
+                activity_regularizer=activity_l2(0.01)
+                ), 
+                name='scores_2', input='activations_1')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_2', input='scores_2')
+
+            # Layer 3
+            # -------
+            graph.add_node(Convolution2D(1, nb_filters, 1, 1, W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)),
+                    name='scores_3', input='activations_2')
+
+            graph.add_node(Activation('sigmoid'),
+                    name='activations_3', input='scores_3')
+
+            graph.add_output(name='output', input='activations_3')
+
+
         sgd = SGD(lr=.1)
         graph.compile(sgd, {'output':'mse'})
 
         self.graph = graph
         self.model_nb = model
+        self.model_name = 'model{0}'.format(model) + '_epoch{0}.hdf5'
+        self.model_path = 'model_weights'
+        self.model_regex = self.model_name.replace('{0}', '\d+')
+        self.pred_name = self.model_name.replace('.hdf5', '_pred.hdf5')
+        self.pred_path = 'predictions'
+        self.pred_regex = self.model_regex.replace('.hdf5', '_pred.hdf5')
 
     def model_init(self, weights_file=None):
         if weights_file is not None:
@@ -200,9 +322,8 @@ class model(object):
         #pdb.set_trace()
         
         #savemodels = SaveModels()
-        model = 'model{0}'.format(self.model_nb)
         history = History()
-        checkpointer = MyModelCheckpoint(model, 0, save_models, verbose=1, save_best_only=False)
+        checkpointer = MyModelCheckpoint(self.model_path, self.model_name, 0, save_models, verbose=1, save_best_only=False)
         #checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
 
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
@@ -218,94 +339,117 @@ class model(object):
         print(history.history)
         return self
 
+    def save_predictions(self, data):
+        '''
+        Given model_regex to match saved model's weights as hdf5 files, load the weights for each hdf5 file
+        and use them to predict 'data' saving the outputs to hdf5 input file + "_pred"
+        '''
+        model = self.graph
+
+        regex = re.compile(self.model_regex)
+        model_files = [f for f in os.listdir(self.model_path) if regex.search(f)]
+        
+        if not os.path.isdir(self.pred_path):
+            os.mkdir(self.pred_path)
+
+        for f in model_files:
+            model.load_weights(os.path.join(self.model_path, f))
+
+            prediction = model.predict({'input':data})['output']
+
+            #plt.imshow(prediction['output'][0,0,:,:], cmap=cm.Greys_r)
+            #plt.savefig('prediction_model{0}_epoch{1}.png'.format(nb_model, epoch))
+            nameout = os.path.join(self.pred_path, f.replace('.hdf5', '_pred.hdf5'))
+
+            fout = h5py.File(nameout, 'w')
+            g = fout.parent
+            dset = g.create_dataset('output', prediction.shape, prediction.dtype)
+            dset[:] = prediction
+
+            fout.flush()
+            fout.close()
+
+    def save_images(self, ori_set, nrows, ncols, nb_img, fig_name=None):
+        '''
+        open all hdf5 files that match self.pred_regex, extract nb_img from them and plot them with the 
+        given number of rows and cols
+
+        inputs:
+        ------
+            ori_set:    numpy.array
+                        something like train or test, the 4D numpy array used for training
+
+            nrows/cols: int
+
+            nb_img:     int
+                        which out of all predictions in the files to draw
+                        plots f['output'][nb_img, 0, :, :]
+
+            fig_name:   str
+                        name on figure, if None will default to 'Im_#'
+
+        '''
+        pathin = self.pred_path
+        pathout = self.pred_path
+        if fig_name is None:
+            fig_name = 'Im_{0}'.format(nb_img)
+
+        regex = re.compile(self.pred_regex)
+        pred_files = [f for f in os.listdir(pathin) if regex.search(f)]
+
+        #pdb.set_trace()
+        if not os.path.isdir(pathout):
+            os.mkdir(pathout)
+
+        #pdb.set_trace()
+        fig, ax = plt.subplots(num='images_to_save', nrows=nrows, ncols=ncols)
+
+        if ax.ndim==1:
+            ax = ax.reshape(-1,1)
+
+        # plot original image
+        ax[0,0].imshow(ori_set[nb_img, 0, :, :], cmap=cm.Greys_r)
+        ax[0,0].set_title('Original')
+        ax[0,0].axis('off')
+
+        for i,f in enumerate(pred_files):
+            col = np.mod(i+1, ncols)
+            row = (i+1)//ncols
+            fid = h5py.File(os.path.join(pathin, f), 'r')
+            im = fid['output']
+            ax[row, col].imshow(im[nb_img, 0, :, :], cmap=cm.Greys_r)
+            ax[row, col].axis('off')
+
+            fid.close()
+
+            #if we have more predictions than requested panels break
+            if i+2 == nrows*ncols:      # +2 because: one +1 comes from the fact that ax[0,0] is the original image
+                                        #           : another +1 comes from the fact that I want to know if I have an ax for next image
+                break
+
+        fig.savefig(os.path.join(pathout, fig_name))
+        
 class MyModelCheckpoint(ModelCheckpoint):
-    
-    def __init__(self, prefix, epoch_offset, save_epochs, monitor='val_loss', verbose=0, save_best_only=False):
+    '''
+    Save models as it learns. Models are saved under self.path with name self.name after relapcing a literal "{0}"
+    by the epoch number. An exammple of a valid self.name = 'model5_weights_{0}.hdf5'
+    '''
+    def __init__(self, path, name, epoch_offset, save_epochs, monitor='val_loss', verbose=0, save_best_only=False):
         super(MyModelCheckpoint, self).__init__('', monitor=monitor, verbose=verbose, save_best_only=save_best_only)
-        self.prefix = prefix
+        self.path = path
+        self.name = name
         self.epoch_offset = epoch_offset
         self.save_epochs=save_epochs
+
+        if not os.path.isdir(path):
+            os.mkdir(path)
 
     def on_epoch_end(self, epoch, logs={}):
         save_epochs = self.save_epochs
         if epoch in save_epochs:
-            self.filepath = '{0}_weights_epoch{1}.hdf5'.format(self.prefix, epoch)
+            self.filepath = os.path.join(self.path, self.name.format(epoch))
             super(MyModelCheckpoint, self).on_epoch_end(epoch, logs)
         
-class SavePredictions(Callback):
-    def __init__(self, filepath, verbose=0):
-        super(Callback, self).__init__()
-        
-        self.verbose = verbose
-        self.filepath = filepath
-
-    def on_epoch_begin(self, epoch, logs={}):
-        # open hdf5 file to save predictions. On first epoch, if file is open it will be empty ('w').
-        # On any other epoch file is opened mode 'a'
-        import h5py
-        
-        filepath = self.filepath
-        print('opening file, epoch=', epoch)
-        try:
-            self.epoch=epoch    # will be used as dictionary key when saving predictions
-            if epoch==0:
-                # Open HDF5 for saving
-                import os.path
-
-                # if file exists and should not be overwritten
-                overwrite = False
-                if not overwrite and os.path.isfile(filepath):
-                    import sys
-                    get_input = input
-                    if sys.version_info[:2] <= (2, 7):
-                        get_input = raw_input
-                    overwrite = get_input('[WARNING] %s already exists - overwrite? [y/n]' % (filepath))
-                    while overwrite not in ['y', 'n']:
-                        overwrite = get_input('Enter "y" (overwrite) or "n" (cancel).')
-                    if overwrite == 'n':
-                        return
-                    print('[TIP] Next time specify overwrite=True in save_weights!')
-
-                    self.f = h5py.File(filepath, 'w')
-                else:
-                    self.f = h5py.File(filepath, 'w')
-            else:
-                self.f = h5py.File(filepath, 'a')
-
-            print('file open as ', self.f)
-        except:
-            self.f.close()
-
-    def on_batch_begin(self, batch, logs={}):
-        try:
-            if batch==0:
-                X = self.model.batch
-                if type(self.model)==Graph:
-                    X = {name:value for (name, value) in zip(self.model.input_order, X)}
-                elif type(self.model)==Sequential:
-                    X = X[0]
-
-                predictions = self.model.predict(X)
-
-                # save to file
-                f = self.f
-                print('about to create group in file')
-                g = f.create_group(str(self.epoch))
-                print('group created')
-                if type(self.model)==Graph:
-                    for name in predictions:
-                        dset = g.create_dataset(name, predictions[name].shape, dtype=predictions[name].dtype)
-                        dset[:] = predictions[name]
-                elif type(self.model)==Sequential:
-                    # Check this works as expected
-                    dset = g.create_dataset('output', predictions.shape, dtype=predictions.dtype)
-                    dset[:] = predictions
-
-                f.flush()
-                f.close()
-        except:
-            self.f.close()
-
 
 class MeanImage(Layer):
     '''
@@ -335,57 +479,4 @@ class MeanImage(Layer):
         #multiply X and out summing over (getting rid of) dimensions with 1s
         out = tensor.tensordot(X, out, [[2,3], [0,1]])
         return out
-
-class SaveInput(Layer):
-    '''
-    Save input to hdf5 file
-    Output of this layer is identical to input.
-    '''
-    def get_output(self, train=False):
-        X = self.get_input(train)
-        f = h5py.File('test', 'a')
-        try:
-            epoch = int(f['epochs']) + 1
-        except:
-            epoch = 0
-
-        g = f.create_group(str(epoch))
-        dset = g.create_dataset('input', X.shape, dtype=X.dtype)
-        dset[:] = X
-        
-        f.flush()
-        f.close()
-
-        return X
-
-
-def savePredictions(nb_model, nb_filters, data):
-    '''
-    Load the model and predict the output to data
-    '''
-
-    import re
-    from os import listdir
-
-    #pdb.set_trace()
-    regex = re.compile('model{0}_weights_epoch(\d*)\.hdf5'.format(nb_model))
-    weight_files = [f for f in listdir('.') if regex.search(f)]
-    
-    data = data.reshape(1, 1, data.shape[0], data.shape[1])
-
-    my_model = None
-
-    for f in weight_files:
-        tokens = (regex.split(f))
-        epoch = int(tokens[1])
-
-        if my_model is None:
-             my_model = model(nb_model, nb_filters=nb_filters)
-        
-        my_model.model_init(f)
-
-        prediction = my_model.graph.predict({'input':data})
-
-        plt.imshow(prediction['output'][0,0,:,:], cmap=cm.Greys_r)
-        plt.savefig('prediction_model{0}_epoch{1}.png'.format(nb_model, epoch))
 
