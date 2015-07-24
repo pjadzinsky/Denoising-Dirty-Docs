@@ -242,7 +242,6 @@ class model(object):
 
             graph.add_output(name='output', input='activations_3')
             
-
         elif model==6:
             # Modification on model5, I'm adding another layer using conv2D at different scales
 
