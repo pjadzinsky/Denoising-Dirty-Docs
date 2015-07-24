@@ -3,6 +3,7 @@ from keras.layers.core import Layer, Dense, Activation, Merge, Reshape, Flatten,
 from keras.layers.convolutional import Convolution2D
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, History, Callback#, SnapshotPrediction
+from keras.regularizers import l2
 from . import load_data
 from theano import tensor
 import numpy as np
@@ -240,16 +241,16 @@ class model(object):
 
             graph.add_output(name='output', input='activations_3')
             
-        elif model==5:
+        elif model==6:
             # Modification on model5, adding regularization.
 
             # Layer 1
             # =======
             #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same', W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)),
+            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same', W_regularizer=l2(0.01)),
                     name='scores_1a', input='input')
 
-            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'), W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)
+            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same', W_regularizer=l2(0.01)), 
                     name='scores_1b', input='input')
 
             # Compute the average image across channels, it will be used as another input on each pixel latter on
@@ -281,7 +282,6 @@ class model(object):
             graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 5, 5,
                 border_mode='same',
                 W_regularizer=l2(0.01),
-                activity_regularizer=activity_l2(0.01)
                 ), 
                 name='scores_2', input='activations_1')
 
@@ -290,14 +290,15 @@ class model(object):
 
             # Layer 3
             # -------
-            graph.add_node(Convolution2D(1, nb_filters, 1, 1, W_regularizer=l2(0.01), activity_regularizer=activity_l2(0.01)),
+            graph.add_node(Convolution2D(1, nb_filters, 1, 1, W_regularizer=l2(0.01)),
                     name='scores_3', input='activations_2')
 
             graph.add_node(Activation('sigmoid'),
                     name='activations_3', input='scores_3')
 
             graph.add_output(name='output', input='activations_3')
-
+        else:
+            raise ValueError('Model {0} not recognized'.format(model))
 
         sgd = SGD(lr=.1)
         graph.compile(sgd, {'output':'mse'})
