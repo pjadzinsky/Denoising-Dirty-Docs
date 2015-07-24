@@ -11,45 +11,57 @@ import os
 import numpy as np
 import pdb
 
-def load_data(flatten=False):
-    folders = ['train', 'train_cleaned', 'test']
+def load_data(sets_to_load):
+    '''
+    sets_to_load is a number in base 10 or a string representng the same number in binary notation ('0b111' is 7)
+    where each digit in binary representation is a data to either load (1) or skip (0)
+    bit 0:  train
+    bit 1:  cleaned
+    bit 2:  test
+    bit 3:  thresh
+    bit 4:  filtered
+
+    load_data(3)    loads only train and cleaned
+    load_data(7)    loads train, cleaned and test
+    '''
+
+    if type(sets_to_load)==int:
+        sets_to_load = bin(sets_to_load)
+
+    # invert sets_to_load such that the less significant bit is sets_to_load[0]
+    sets_to_load = sets_to_load[:1:-1]      # inverts the string and removes part corresponding to '0b'
+
+    #train=True, cleaned=True, test=True, thresh=True, filtered=True):
+    folders = ['train', 'train_cleaned', 'test', 'train_thresh', 'train_filtered']
 
     output = []
 
-    for folder in folders:
-        files = os.listdir(folder)
+    for bit, folder in zip(sets_to_load, folders):
+        if bit=='1':
+            files = os.listdir(folder)
 
-        # each folder will load images into a different list. Each list starts empty
-        output.append([])
+            # each folder will load images into a different list. Each list starts empty
+            output.append([])
 
-        #pdb.set_trace()
-        for f in files:
-            try:
-                # try loading the image
-                im = Image.open(os.path.join(folder, f))
-                size = im.size
-                image = im.getdata()
-                #TODO for the time being, I'm limiting image to be 540x248
-                image = list(image)[:540*248]
-                output[-1].append(image)
-            except:
-                pass
+            #pdb.set_trace()
+            for f in files:
+                try:
+                    # try loading the image
+                    im = Image.open(os.path.join(folder, f))
+                    size = im.size
+                    image = im.getdata()
+                    #TODO for the time being, I'm limiting image to be 540x248
+                    image = np.array(image)[:540*248].astype(np.float32)
 
-    train = np.array(output[0])
-    train_cleaned = np.array(output[1])
-    test = np.array(output[2])
+                    # normalize images
+                    image = (image - image.min())/(image.max() - image.min())
 
-    if not flatten:
-        train = train.reshape(-1, 1, 248, 540)
-        train_cleaned = train_cleaned.reshape(-1, 1, 248, 540)
-        test = test.reshape(-1, 1, 248, 540)
+                    assert(image.max()==1)
+                    assert(image.min()==0)
+                    output[-1].append(image)
+                except:
+                    pass
 
-    train = train.astype(np.float32)
-    train_cleaned = train_cleaned.astype(np.float32)
-    test = test.astype(np.float32)
+            output[-1] = np.array(output[-1]).reshape(-1, 1, 248, 540)
 
-    train /= 255.0
-    train_cleaned /= 255.0
-    test /= 255.0
-
-    return train, train_cleaned, test
+    return tuple(output)
