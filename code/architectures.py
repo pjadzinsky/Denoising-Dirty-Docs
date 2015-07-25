@@ -368,7 +368,7 @@ class model(object):
             # =======
             graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 5, 5,
                 border_mode='same',
-                W_regularizer=l2(0.01),
+                W_regularizer=l2(0.01)
                 ), 
                 name='scores_2', input='activations_1')
 
