@@ -5,7 +5,7 @@ from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, History, Callback#, SnapshotPrediction
 from keras.regularizers import l2
 from keras.preprocessing.image import ImageDataGenerator
-from . import load_data
+import load_data
 from theano import tensor
 import numpy as np
 import pdb
@@ -23,14 +23,11 @@ class model(object):
 
         if model==1:
             # 3 conv layers with different filter sizes that get merged 
-            graph.add_node(Convolution2D(nb_filters, 1, 1, 1, border_mode='valid'),
+            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
                     name='scores_1a', input='input')
 
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
-                    name='scores_1b', input='input')
-
             graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
-                    name='scores_1c', input='input')
+                    name='scores_1b', input='input')
 
             graph.add_node(Permute((2,3,1)), 
                     name='scores_1a_permuted', input='scores_1a')
@@ -38,16 +35,13 @@ class model(object):
             graph.add_node(Permute((2,3,1)),
                     name='scores_1b_permuted', input='scores_1b')
 
-            graph.add_node(Permute((2,3,1)),
-                    name='scores_1c_permuted', input='scores_1c')
-
             graph.add_node(Activation('relu'),
-                    name='activations_1_permuted', inputs=['scores_1a_permuted', 'scores_1b_permuted', 'scores_1c_permuted'])
+                    name='activations_1_permuted', inputs=['scores_1a_permuted', 'scores_1b_permuted'])
 
             graph.add_node(Permute((3,1,2)),
                     name='activations_1', input='activations_1_permuted')
 
-            graph.add_node(Convolution2D(1, 3*nb_filters, 3, 3, border_mode='same'), 
+            graph.add_node(Convolution2D(1, 2*nb_filters, 3, 3, border_mode='same'), 
                     name='scores_2', input='activations_1')
 
             graph.add_node(Activation('sigmoid'),
@@ -290,10 +284,10 @@ class model(object):
 
             # Layer 3 (identical to layer1)
             # -------
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
+            graph.add_node(Convolution2D(nb_filters, nb_filters, 5, 5, border_mode='same'),
                     name='scores_3a', input='activations_2')
 
-            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
+            graph.add_node(Convolution2D(nb_filters, nb_filters, 11, 11, border_mode='same'),
                     name='scores_3b', input='activations_2')
 
             graph.add_node(Permute((2,3,1)), 

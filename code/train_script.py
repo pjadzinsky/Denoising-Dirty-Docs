@@ -2,7 +2,7 @@ import utils, architectures, load_data
 
 train, train_cleaned= load_data.load_data(3)
 
-nb_filters = 10
+nb_filters = 6
 epochs = 101
 save_every_epochs = 10
 nb_model = 6
