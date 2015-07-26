@@ -16,7 +16,7 @@ import re
 import os
 
 class model(object):
-    def __init__(self, model, f_size, weights_file=None, nb_filters=1):
+    def __init__(self, model, f_size, nb_filters, weights_file=None):
         graph = Graph()
 
         graph.add_input(name='input', ndim=4)
@@ -409,6 +409,63 @@ class model(object):
             graph.add_output(name='output', input='activations_5')
 
         elif model==8:
+            if type(nb_filters) == int:
+                nb_filters = [nb_filters]
+
+            if type(f_size) == int:
+                f_size = [f_size]
+            
+            nb_pathways = max(len(f_size), len(nb_filters))
+            
+            if len(nb_filters) < nb_pathways:
+                nb_filters *= nb_pathways
+            
+            if len(f_size) < nb_pathways:
+                f_size *= nb_pathways
+            
+            # Compute some nodes that will be reused over several layers
+            graph.add_node(MeanImage(), 
+                    name='mean', input='input')
+            
+            graph.add_node(Permute((2,3,1)),
+                    name='input_permuted', input='input')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='mean_permuted', input='mean')
+
+            # Layer 1
+            # =======
+            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
+            layers_to_concat = ['input_permuted', 'mean_permuted']
+
+            for i in range(nb_pathways):
+                graph.add_node(Convolution2D(nb_filters[i], 1, f_size[i], f_size[i], border_mode='same'),
+                        name='scores_1_{0}'.format(i), input='input')
+
+                graph.add_node(Permute((2,3,1)), 
+                        name='scores_1_{0}_permuted'.format(i), input='scores_1_{0}'.format(i))
+                
+                layers_to_concat.append('scores_1_{0}_permuted'.format(i))
+
+            graph.add_node(Activation('relu'),
+                    name='activations_1_permuted', 
+                    inputs=layers_to_concat,
+                    merge_mode='concat')
+
+            graph.add_node(Permute((3,1,2)),
+                    name='activations_1', input='activations_1_permuted')
+
+            # Layer 2
+            # =======
+            graph.add_node(Convolution2D(1, sum(nb_filters) + 2, 3, 3, border_mode='same'), 
+                    name='scores_2', input='activations_1')
+
+            graph.add_node(Activation('sigmoid'),
+                    name='activations_2', input='scores_2')
+
+            graph.add_output(name='output', input='activations_2')
+
+        elif model==9:
             # Modification on model5, adding regularization.
 
             # Layer 1
