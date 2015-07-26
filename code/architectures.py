@@ -5,7 +5,7 @@ from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, History, Callback#, SnapshotPrediction
 from keras.regularizers import l2
 from keras.preprocessing.image import ImageDataGenerator
-import load_data
+from code import load_data
 from theano import tensor
 import numpy as np
 import pdb
@@ -16,7 +16,7 @@ import re
 import os
 
 class model(object):
-    def __init__(self, model, weights_file=None, nb_filters=1):
+    def __init__(self, model, f_size, weights_file=None, nb_filters=1):
         graph = Graph()
 
         graph.add_input(name='input', ndim=4)
@@ -323,6 +323,92 @@ class model(object):
             graph.add_output(name='output', input='activations_5')
 
         elif model==7:
+            # Modification on model5, I'm adding another layer using conv2D at different scales
+
+            # Compute some nodes that will be reused over several layers
+            graph.add_node(MeanImage(), 
+                    name='mean', input='input')
+            
+            graph.add_node(Permute((2,3,1)),
+                    name='input_permuted', input='input')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='mean_permuted', input='mean')
+
+            # Layer 1
+            # =======
+            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
+            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
+                    name='scores_1a', input='input')
+
+            graph.add_node(Convolution2D(nb_filters, 1, f_size, f_size, border_mode='same'),
+                    name='scores_1b', input='input')
+
+            graph.add_node(Permute((2,3,1)), 
+                    name='scores_1a_permuted', input='scores_1a')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='scores_1b_permuted', input='scores_1b')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_1_permuted', 
+                    inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'],
+                    merge_mode='concat')
+
+            graph.add_node(Permute((3,1,2)),
+                    name='activations_1', input='activations_1_permuted')
+
+            # Layer 2
+            # =======
+            graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 3, 3, border_mode='same'), 
+                    name='scores_2', input='activations_1')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_2', input='scores_2')
+
+            # Another instance of Layer 1 & 2
+
+            # Layer 3 (identical to layer1)
+            # -------
+            graph.add_node(Convolution2D(nb_filters, nb_filters, 5, 5, border_mode='same'),
+                    name='scores_3a', input='activations_2')
+
+            graph.add_node(Convolution2D(nb_filters, nb_filters, f_size, f_size, border_mode='same'),
+                    name='scores_3b', input='activations_2')
+
+            graph.add_node(Permute((2,3,1)), 
+                    name='scores_3a_permuted', input='scores_3a')
+
+            graph.add_node(Permute((2,3,1)),
+                    name='scores_3b_permuted', input='scores_3b')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_3_permuted', 
+                    inputs=['scores_3a_permuted', 'scores_3b_permuted', 'input_permuted', 'mean_permuted'],
+                    merge_mode='concat')
+
+            graph.add_node(Permute((3,1,2)),
+                    name='activations_3', input='activations_3_permuted')
+
+            # Layer 4 (identical to layer2)
+            # =======
+            graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 3, 3, border_mode='same'), 
+                    name='scores_4', input='activations_3')
+
+            graph.add_node(Activation('relu'),
+                    name='activations_4', input='scores_4')
+
+            # Layer 5
+            # -------
+            graph.add_node(Convolution2D(1, nb_filters, 1, 1),
+                    name='scores_5', input='activations_4')
+
+            graph.add_node(Activation('sigmoid'),
+                    name='activations_5', input='scores_5')
+
+            graph.add_output(name='output', input='activations_5')
+
+        elif model==8:
             # Modification on model5, adding regularization.
 
             # Layer 1
