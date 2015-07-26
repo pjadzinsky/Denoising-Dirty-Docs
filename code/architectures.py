@@ -16,7 +16,7 @@ import re
 import os
 
 class model(object):
-    def __init__(self, model, f_size, nb_filters, weights_file=None):
+    def __init__(self, model, f_size, nb_filters, weights_file=None, model_name = 'model_epoch{0}.hdf5'):
         graph = Graph()
 
         graph.add_input(name='input', ndim=4)
@@ -438,6 +438,7 @@ class model(object):
             #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
             layers_to_concat = ['input_permuted', 'mean_permuted']
 
+            model_name = ''
             for i in range(nb_pathways):
                 graph.add_node(Convolution2D(nb_filters[i], 1, f_size[i], f_size[i], border_mode='same'),
                         name='scores_1_{0}'.format(i), input='input')
@@ -446,6 +447,10 @@ class model(object):
                         name='scores_1_{0}_permuted'.format(i), input='scores_1_{0}'.format(i))
                 
                 layers_to_concat.append('scores_1_{0}_permuted'.format(i))
+
+                model_name = model_name + '_{0}({1})'.format(f_size[i], nb_filters[i])
+
+            model_name = 'model8' + model_name + '.hdf5'
 
             graph.add_node(Activation('relu'),
                     name='activations_1_permuted', 
@@ -529,7 +534,7 @@ class model(object):
 
         self.graph = graph
         self.model_nb = model
-        self.model_name = 'model{0}'.format(model) + '_epoch{0}.hdf5'
+        self.model_name = model_name
         self.model_path = 'model_weights'
         self.model_regex = self.model_name.replace('{0}', '\d+')
         self.pred_name = self.model_name.replace('.hdf5', '_pred.hdf5')
