@@ -218,7 +218,7 @@ class model(object):
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
         self.loss = np.array(history.history['output'])
 
-        self.create_loss_file()
+        self.make_loss_file()
 
         return self
 
@@ -353,7 +353,7 @@ class model(object):
 
         fig.savefig(os.path.join(pathout, fig_name))
 
-    def create_loss_file(self):
+    def make_loss_file(self):
         loss_name = self.model_name.replace('epoch{0}.hdf5', 'loss.hdf5')
         if os.path.isfile(loss_name):
             import sys
@@ -371,8 +371,9 @@ class model(object):
         f = h5py.File(loss_name, 'w')
         g = f.parent
         g['loss'] = self.loss
-        g.attrs['f_sizes'] = str(self.f_sizes)
-        g.attrs['nb_filters'] = str(self.nb_filters)
+        g.attrs['f_sizes'] = self.f_sizes
+        g.attrs['nb_filters'] = self.nb_filters
+        g.attrs['model_nb'] = self.model_nb
 
         f.flush()
         f.close()
@@ -428,3 +429,61 @@ class MeanImage(Layer):
         out = tensor.tensordot(X, out, [[2,3], [0,1]])
         return out
 
+def compare_losses(regex_str):
+    '''
+    load all hdf5 files that match regex_str and plot the 'loss' for each of them
+    '''
+    import re
+
+    regex = re.compile(regex_str)
+
+    fig, ax = plt.subplots(num='loss')
+
+    loss_files = [f for f in os.listdir() if regex.search(f)]
+    for f_name in loss_files:
+        f = h5py.File(f_name, 'r')
+        print(f_name)
+        #pdb.set_trace()
+        try:
+            loss = np.array(f['loss'])
+            label = f_name.replace('.hdf5', '').replace('_loss', '')
+            ax.plot(loss, label=label)
+        except:
+            pass
+
+        f.close()
+
+    ax.legend()
+
+def load_model(loss_file, weights_file):
+    pdb.set_trace()
+    f = h5py.File(loss_file, 'r')
+    f_sizes = f.attrs['f_sizes']
+    nb_filters = f.attrs['nb_filters']
+    model_name = loss_file.replace('loss', 'epoch{0}')
+
+    if type(f_sizes) == np.ndarray:
+        f_sizes = f_sizes.tolist()
+    else:
+        f_sizes = int(f_sizes)
+
+    if type(nb_filters) == np.ndarray:
+        nb_filters = nb_filters.tolist()
+    else:
+        nb_filters = int(nb_filters)
+
+    try:
+        model_nb = int(f.attrs['model_nb'])
+    except:
+        model_nb=1
+
+    f.close()
+    mymodel = model(model_nb, f_sizes, nb_filters, model_name)
+    
+    try:
+        mymodel.graph.load_weights(weights_file)
+    except:
+        pass
+
+    return mymodel
+    
