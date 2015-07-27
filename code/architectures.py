@@ -16,32 +16,86 @@ import re
 import os
 
 class model(object):
-    def __init__(self, model, f_size, nb_filters, weights_file=None, model_name = 'model_epoch{0}.hdf5'):
+    def __init__(self, model, f_sizes, nb_filters, model_name, weights_file=None):
+        self.model_nb = model
+        self.f_sizes = f_sizes
+        self.nb_filters = nb_filters
+        self.model_name = model_name
+        self.model_path = 'model_weights'
+        self.model_regex = self.model_name.replace('{0}', '\d+')
+        self.pred_name = self.model_name.replace('.hdf5', '_pred.hdf5')
+        self.pred_path = 'predictions'
+        self.pred_regex = self.model_regex.replace('.hdf5', '_pred.hdf5')
+
+        if model_name.endswith('epoch{0}.hdf5'):
+            pass
+        else:
+            raise ValueError('model_name should end with "epoch{0}.hdf5"')
+
         graph = Graph()
 
         graph.add_input(name='input', ndim=4)
 
+        # Compute some nodes that will be reused over several layers
+        graph.add_node(MeanImage(), 
+                name='mean', input='input')
+        
+        graph.add_node(Permute((2,3,1)),
+                name='input_permuted', input='input')
+
+        graph.add_node(Permute((2,3,1)),
+                name='mean_permuted', input='mean')
+
         if model==1:
-            # 3 conv layers with different filter sizes that get merged 
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
-                    name='scores_1a', input='input')
+            if type(f_sizes) == int:
+                f_sizes = [f_sizes]
+            
+            if type(nb_filters) == int:
+                nb_filters = [nb_filters]
 
-            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
-                    name='scores_1b', input='input')
+            nb_pathways = max(len(f_sizes), len(nb_filters))
+            
+            if len(f_sizes) < nb_pathways:
+                f_sizes *= nb_pathways
+            
+            if len(nb_filters) < nb_pathways:
+                nb_filters *= nb_pathways
+            
+            if not len(f_sizes)==len(nb_filters):
+                raise ValueError("Something is wrong. nb_filters has {0} and f_sizes has {1} points\
+                        , they should be the same".format(len(nb_filters), len(f_sizes)))
 
-            graph.add_node(Permute((2,3,1)), 
-                    name='scores_1a_permuted', input='scores_1a')
+            # Layer 1
+            # -------
+            # nb_pathways conv layers with different filter sizes that get concatenated with the
+            # original image and a Mean intensity
+            layers_to_concat = ['input_permuted', 'mean_permuted']
 
-            graph.add_node(Permute((2,3,1)),
-                    name='scores_1b_permuted', input='scores_1b')
+            model_name = ''
+            for i in range(nb_pathways):
+                graph.add_node(Convolution2D(nb_filters[i], 1, f_sizes[i], f_sizes[i], border_mode='same'),
+                        name='scores_1_{0}'.format(i), input='input')
+
+                graph.add_node(Permute((2,3,1)), 
+                        name='scores_1_{0}_permuted'.format(i), input='scores_1_{0}'.format(i))
+                
+                layers_to_concat.append('scores_1_{0}_permuted'.format(i))
+
+                model_name = model_name + '_{0}({1})'.format(f_sizes[i], nb_filters[i])
+
+            model_name = 'model1' + model_name + 'epoch{0}.hdf5'
 
             graph.add_node(Activation('relu'),
-                    name='activations_1_permuted', inputs=['scores_1a_permuted', 'scores_1b_permuted'])
+                    name='activations_1_permuted', 
+                    inputs=layers_to_concat,
+                    merge_mode='concat')
 
             graph.add_node(Permute((3,1,2)),
                     name='activations_1', input='activations_1_permuted')
 
-            graph.add_node(Convolution2D(1, 2*nb_filters, 3, 3, border_mode='same'), 
+            # Layer 2
+            # -------
+            graph.add_node(Convolution2D(1, sum(nb_filters) + 2, 1, 1), 
                     name='scores_2', input='activations_1')
 
             graph.add_node(Activation('sigmoid'),
@@ -50,193 +104,6 @@ class model(object):
             graph.add_output(name='output', input='activations_2')
 
         elif model==2:
-            # Compute the average image across channels, it will be used as another input on each pixel latter on
-            graph.add_node(MeanImage(), 
-                    name='mean', input='input')
-
-            # Concatenate input and mean image representations. 
-            graph.add_node(Permute((2,3,1)), 
-                    name='mean_permuted', input='mean')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='input_permuted', input='input')
-
-            graph.add_node(Activation('linear'),
-                    name='concat_permuted', inputs=['mean_permuted', 'input_permuted'], merge_mode='concat')
-
-            graph.add_node(Permute((3,1,2)),
-                    name='concat', input='concat_permuted')
-            
-            # Finished concatenating images.
-
-            graph.add_node(Convolution2D(1, 2, 1, 1, border_mode='same'),
-                    name='scores_1', input='concat')
-
-            graph.add_node(Activation('sigmoid'),
-                    name='activations_1', input='scores_1')
-
-            graph.add_output(name='output', input='activations_1')
-
-        elif model==3:
-            # 3 conv layers with different filter sizes and a Mean intensity that get merged 
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
-                    name='scores_1a', input='input')
-
-            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
-                    name='scores_1b', input='input')
-
-            # Compute the average image across channels, it will be used as another input on each pixel latter on
-            graph.add_node(MeanImage(), 
-                    name='mean', input='input')
-            
-            graph.add_node(Permute((2,3,1)), 
-                    name='scores_1a_permuted', input='scores_1a')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='scores_1b_permuted', input='scores_1b')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='input_permuted', input='input')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='mean_permuted', input='mean')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_1_permuted', inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'])
-
-            graph.add_node(Permute((3,1,2)),
-                    name='activations_1', input='activations_1_permuted')
-
-            graph.add_node(Convolution2D(1, 2*nb_filters + 2, 5, 5, border_mode='same'), 
-                    name='scores_2', input='activations_1')
-
-            graph.add_node(Activation('sigmoid'),
-                    name='activations_2', input='scores_2')
-
-            graph.add_output(name='output', input='activations_2')
-
-        elif model==4:
-            # Extension of model 3.
-            # Layer 1. Mixes filtered images with mean and input and passes through relu
-            # Layer 2. Mixes layer1 with mean and input again and passes through relu
-            # Layer 3. Output (sigmoid)
-            #merge of filters, mean and input I'm adding another layer whereChanging layer that pulls together filters and mean to relu
-            # and adding a sigmoid at the end.
-
-            # Layer 1
-            # =======
-            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
-                    name='scores_1a', input='input')
-
-            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
-                    name='scores_1b', input='input')
-
-            # Compute the average image across channels, it will be used as another input on each pixel latter on
-            graph.add_node(MeanImage(), 
-                    name='mean', input='input')
-            
-            graph.add_node(Permute((2,3,1)), 
-                    name='scores_1a_permuted', input='scores_1a')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='scores_1b_permuted', input='scores_1b')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='input_permuted', input='input')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='mean_permuted', input='mean')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_1_permuted', inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'], merge_mode='concat')
-
-            graph.add_node(Permute((3,1,2)),
-                    name='activations_1', input='activations_1_permuted')
-
-            # Layer 2
-            # =======
-            graph.add_node(Convolution2D(1, 2*nb_filters + 2, 5, 5, border_mode='same'), 
-                    name='scores_2', input='activations_1')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_2', input='scores_2')
-
-            # Layer 3
-            # =======
-            # mix this again with mean layer and input layer
-            graph.add_node(Permute((2,3,1)),
-                    name='activations_2_permuted', input='activations_2')
-
-            graph.add_node(Activation('linear'),
-                    name='activations_2_merged', inputs=['activations_2_permuted', 'mean_permuted', 'input_permuted'], merge_mode='concat')
-
-            graph.add_node(Permute((3,1,2)),
-                    name='merged_2', input='activations_2_merged')
-
-            graph.add_node(Convolution2D(1, 3, 1, 1),
-                    name='scores_3', input='merged_2')
-
-            graph.add_node(Activation('sigmoid'),
-                    name='activations_3', input='scores_3')
-
-            graph.add_output(name='output', input='activations_3')
-
-        elif model==5:
-            # Modification on model4, I'm preprocessing data by normalizing between 0 and 1.
-
-            # Layer 1
-            # =======
-            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
-                    name='scores_1a', input='input')
-
-            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
-                    name='scores_1b', input='input')
-
-            # Compute the average image across channels, it will be used as another input on each pixel latter on
-            graph.add_node(MeanImage(), 
-                    name='mean', input='input')
-            
-            graph.add_node(Permute((2,3,1)), 
-                    name='scores_1a_permuted', input='scores_1a')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='scores_1b_permuted', input='scores_1b')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='input_permuted', input='input')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='mean_permuted', input='mean')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_1_permuted', 
-                    inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'],
-                    merge_mode='concat')
-
-            graph.add_node(Permute((3,1,2)),
-                    name='activations_1', input='activations_1_permuted')
-
-            # Layer 2
-            # =======
-            graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 5, 5, border_mode='same'), 
-                    name='scores_2', input='activations_1')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_2', input='scores_2')
-
-            # Layer 3
-            # -------
-            graph.add_node(Convolution2D(1, nb_filters, 1, 1),
-                    name='scores_3', input='activations_2')
-
-            graph.add_node(Activation('sigmoid'),
-                    name='activations_3', input='scores_3')
-
-            graph.add_output(name='output', input='activations_3')
-            
-        elif model==6:
             # Modification on model5, I'm adding another layer using conv2D at different scales
 
             # Compute some nodes that will be reused over several layers
@@ -250,93 +117,7 @@ class model(object):
                     name='mean_permuted', input='mean')
 
             # Layer 1
-            # =======
-            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
-                    name='scores_1a', input='input')
-
-            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same'),
-                    name='scores_1b', input='input')
-
-            graph.add_node(Permute((2,3,1)), 
-                    name='scores_1a_permuted', input='scores_1a')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='scores_1b_permuted', input='scores_1b')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_1_permuted', 
-                    inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'],
-                    merge_mode='concat')
-
-            graph.add_node(Permute((3,1,2)),
-                    name='activations_1', input='activations_1_permuted')
-
-            # Layer 2
-            # =======
-            graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 3, 3, border_mode='same'), 
-                    name='scores_2', input='activations_1')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_2', input='scores_2')
-
-            # Another instance of Layer 1 & 2
-
-            # Layer 3 (identical to layer1)
             # -------
-            graph.add_node(Convolution2D(nb_filters, nb_filters, 5, 5, border_mode='same'),
-                    name='scores_3a', input='activations_2')
-
-            graph.add_node(Convolution2D(nb_filters, nb_filters, 11, 11, border_mode='same'),
-                    name='scores_3b', input='activations_2')
-
-            graph.add_node(Permute((2,3,1)), 
-                    name='scores_3a_permuted', input='scores_3a')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='scores_3b_permuted', input='scores_3b')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_3_permuted', 
-                    inputs=['scores_3a_permuted', 'scores_3b_permuted', 'input_permuted', 'mean_permuted'],
-                    merge_mode='concat')
-
-            graph.add_node(Permute((3,1,2)),
-                    name='activations_3', input='activations_3_permuted')
-
-            # Layer 4 (identical to layer2)
-            # =======
-            graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 3, 3, border_mode='same'), 
-                    name='scores_4', input='activations_3')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_4', input='scores_4')
-
-            # Layer 5
-            # -------
-            graph.add_node(Convolution2D(1, nb_filters, 1, 1),
-                    name='scores_5', input='activations_4')
-
-            graph.add_node(Activation('sigmoid'),
-                    name='activations_5', input='scores_5')
-
-            graph.add_output(name='output', input='activations_5')
-
-        elif model==7:
-            # Modification on model5, I'm adding another layer using conv2D at different scales
-
-            # Compute some nodes that will be reused over several layers
-            graph.add_node(MeanImage(), 
-                    name='mean', input='input')
-            
-            graph.add_node(Permute((2,3,1)),
-                    name='input_permuted', input='input')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='mean_permuted', input='mean')
-
-            # Layer 1
-            # =======
             #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
             graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same'),
                     name='scores_1a', input='input')
@@ -359,7 +140,7 @@ class model(object):
                     name='activations_1', input='activations_1_permuted')
 
             # Layer 2
-            # =======
+            # -------
             graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 3, 3, border_mode='same'), 
                     name='scores_2', input='activations_1')
 
@@ -391,7 +172,7 @@ class model(object):
                     name='activations_3', input='activations_3_permuted')
 
             # Layer 4 (identical to layer2)
-            # =======
+            # -------
             graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 3, 3, border_mode='same'), 
                     name='scores_4', input='activations_3')
 
@@ -408,124 +189,6 @@ class model(object):
 
             graph.add_output(name='output', input='activations_5')
 
-        elif model==8:
-            if type(nb_filters) == int:
-                nb_filters = [nb_filters]
-
-            if type(f_size) == int:
-                f_size = [f_size]
-            
-            nb_pathways = max(len(f_size), len(nb_filters))
-            
-            if len(nb_filters) < nb_pathways:
-                nb_filters *= nb_pathways
-            
-            if len(f_size) < nb_pathways:
-                f_size *= nb_pathways
-            
-            # Compute some nodes that will be reused over several layers
-            graph.add_node(MeanImage(), 
-                    name='mean', input='input')
-            
-            graph.add_node(Permute((2,3,1)),
-                    name='input_permuted', input='input')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='mean_permuted', input='mean')
-
-            # Layer 1
-            # =======
-            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
-            layers_to_concat = ['input_permuted', 'mean_permuted']
-
-            model_name = ''
-            for i in range(nb_pathways):
-                graph.add_node(Convolution2D(nb_filters[i], 1, f_size[i], f_size[i], border_mode='same'),
-                        name='scores_1_{0}'.format(i), input='input')
-
-                graph.add_node(Permute((2,3,1)), 
-                        name='scores_1_{0}_permuted'.format(i), input='scores_1_{0}'.format(i))
-                
-                layers_to_concat.append('scores_1_{0}_permuted'.format(i))
-
-                model_name = model_name + '_{0}({1})'.format(f_size[i], nb_filters[i])
-
-            model_name = 'model8' + model_name + '.hdf5'
-
-            graph.add_node(Activation('relu'),
-                    name='activations_1_permuted', 
-                    inputs=layers_to_concat,
-                    merge_mode='concat')
-
-            graph.add_node(Permute((3,1,2)),
-                    name='activations_1', input='activations_1_permuted')
-
-            # Layer 2
-            # =======
-            graph.add_node(Convolution2D(1, sum(nb_filters) + 2, 3, 3, border_mode='same'), 
-                    name='scores_2', input='activations_1')
-
-            graph.add_node(Activation('sigmoid'),
-                    name='activations_2', input='scores_2')
-
-            graph.add_output(name='output', input='activations_2')
-
-        elif model==9:
-            # Modification on model5, adding regularization.
-
-            # Layer 1
-            # =======
-            #, 3 conv layers with different filter sizes and a Mean intensity that get merged 
-            graph.add_node(Convolution2D(nb_filters, 1, 5, 5, border_mode='same', W_regularizer=l2(0.01)),
-                    name='scores_1a', input='input')
-
-            graph.add_node(Convolution2D(nb_filters, 1, 11, 11, border_mode='same', W_regularizer=l2(0.01)), 
-                    name='scores_1b', input='input')
-
-            # Compute the average image across channels, it will be used as another input on each pixel latter on
-            graph.add_node(MeanImage(), 
-                    name='mean', input='input')
-            
-            graph.add_node(Permute((2,3,1)), 
-                    name='scores_1a_permuted', input='scores_1a')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='scores_1b_permuted', input='scores_1b')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='input_permuted', input='input')
-
-            graph.add_node(Permute((2,3,1)),
-                    name='mean_permuted', input='mean')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_1_permuted', 
-                    inputs=['scores_1a_permuted', 'scores_1b_permuted', 'input_permuted', 'mean_permuted'],
-                    merge_mode='concat')
-
-            graph.add_node(Permute((3,1,2)),
-                    name='activations_1', input='activations_1_permuted')
-
-            # Layer 2
-            # =======
-            graph.add_node(Convolution2D(nb_filters, 2*nb_filters + 2, 5, 5,
-                border_mode='same',
-                W_regularizer=l2(0.01)
-                ), 
-                name='scores_2', input='activations_1')
-
-            graph.add_node(Activation('relu'),
-                    name='activations_2', input='scores_2')
-
-            # Layer 3
-            # -------
-            graph.add_node(Convolution2D(1, nb_filters, 1, 1, W_regularizer=l2(0.01)),
-                    name='scores_3', input='activations_2')
-
-            graph.add_node(Activation('sigmoid'),
-                    name='activations_3', input='scores_3')
-
-            graph.add_output(name='output', input='activations_3')
         else:
             raise ValueError('Model {0} not recognized'.format(model))
 
@@ -533,20 +196,13 @@ class model(object):
         graph.compile(sgd, {'output':'mse'})
 
         self.graph = graph
-        self.model_nb = model
-        self.model_name = model_name
-        self.model_path = 'model_weights'
-        self.model_regex = self.model_name.replace('{0}', '\d+')
-        self.pred_name = self.model_name.replace('.hdf5', '_pred.hdf5')
-        self.pred_path = 'predictions'
-        self.pred_regex = self.model_regex.replace('.hdf5', '_pred.hdf5')
 
     def model_init(self, weights_file=None):
         if weights_file is not None:
             self.graph.load_weights(weights_file)
             
             
-    def fit(self, X, Y, nb_epoch, save_models=[], logs={}):
+    def fit(self, X, Y, nb_epoch, save_models=[], logs={}, validation_split=0.1):
         # X, Y are 4D arrays such that X.shape is (number of samples, color channels, height, width)
         # and X[0,:,:,:] is an image (shapes for Y are the same as for X)
         #pdb.set_trace()
@@ -557,7 +213,8 @@ class model(object):
         #checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
 
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
-        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, history])
+        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1,
+                callbacks=[checkpointer, history], validation_split=validation_split)
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
         output = np.array(history.history['output'])
         f = h5py.File('model{0}_loss.hdf5'.format(self.model_nb), 'w')
