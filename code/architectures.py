@@ -216,14 +216,10 @@ class model(object):
         self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1,
                 callbacks=[checkpointer, history], validation_split=validation_split)
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
-        output = np.array(history.history['output'])
-        f = h5py.File('model{0}_loss.hdf5'.format(self.model_nb), 'w')
-        g = f.parent
-        dset = g.create_dataset('output', output.shape, dtype=output.dtype)
-        dset[:] = output
-        f.flush()
-        f.close()
-        print(history.history)
+        self.loss = np.array(history.history['output'])
+
+        self.create_loss_file()
+
         return self
 
     def train(self, X, Y, nb_epoch, save_models=[]):
@@ -356,6 +352,30 @@ class model(object):
                 break
 
         fig.savefig(os.path.join(pathout, fig_name))
+
+    def create_loss_file(self):
+        loss_name = self.model_name.replace('epoch{0}.hdf5', 'loss.hdf5')
+        if os.path.isfile(loss_name):
+            import sys
+
+            get_input = input
+            if sys.version_info[:2] <= (2, 7):
+                get_input = raw_input
+            
+            overwrite = get_input('[WARNING] %s already exists - overwrite? [y/n]' % (loss_name))
+            while overwrite not in ['y', 'n']:
+                overwrite = get_input('Enter "y" (overwrite) or "n" (cancel).')
+            if overwrite == 'n':
+                return
+
+        f = h5py.File(loss_name, 'w')
+        g = f.parent
+        g['loss'] = self.loss
+        g.attrs['f_sizes'] = str(self.f_sizes)
+        g.attrs['nb_filters'] = str(self.nb_filters)
+
+        f.flush()
+        f.close()
         
 class MyModelCheckpoint(ModelCheckpoint):
     '''
