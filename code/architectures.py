@@ -22,6 +22,7 @@ class model(object):
         self.nb_filters = nb_filters
         self.model_name = model_name
         self.model_path = 'model_weights'
+        pdb.set_trace()
         self.model_regex = self.model_name.replace('{0}', '\d+')
         self.pred_name = self.model_name.replace('.hdf5', '_pred.hdf5')
         self.pred_path = 'predictions'
@@ -269,6 +270,7 @@ class model(object):
         and use them to predict 'data' saving the outputs to hdf5 input file + "_pred"
         '''
         model = self.graph
+        pdb.set_trace()
 
         regex = re.compile(self.model_regex)
         model_files = [f for f in os.listdir(self.model_path) if regex.search(f)]
@@ -354,7 +356,9 @@ class model(object):
         fig.savefig(os.path.join(pathout, fig_name))
 
     def make_loss_file(self):
+        path = self.model_path
         loss_name = self.model_name.replace('epoch{0}.hdf5', 'loss.hdf5')
+        loss_name = os.path.join(path, loss_name)
         if os.path.isfile(loss_name):
             import sys
 
@@ -373,7 +377,6 @@ class model(object):
         g['loss'] = self.loss
         g.attrs['f_sizes'] = self.f_sizes
         g.attrs['nb_filters'] = self.nb_filters
-        pdb.set_trace()
         g.attrs['model_nb'] = self.model_nb
 
         f.flush()

@@ -3,7 +3,7 @@ import utils, architectures, load_data
 train, train_cleaned= load_data.load_data(3)
 
 epochs = 3
-save_every_epochs = -1
+save_every_epochs = 10
 nb_model = 1
 f_size = [3]
 nb_filters = 1
