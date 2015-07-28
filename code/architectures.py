@@ -22,7 +22,6 @@ class model(object):
         self.nb_filters = nb_filters
         self.model_name = model_name
         self.model_path = 'model_weights'
-        pdb.set_trace()
         self.model_regex = self.model_name.replace('{0}', '\d+')
         self.pred_name = self.model_name.replace('.hdf5', '_pred.hdf5')
         self.pred_path = 'predictions'
@@ -270,7 +269,6 @@ class model(object):
         and use them to predict 'data' saving the outputs to hdf5 input file + "_pred"
         '''
         model = self.graph
-        pdb.set_trace()
 
         regex = re.compile(self.model_regex)
         model_files = [f for f in os.listdir(self.model_path) if regex.search(f)]
@@ -460,11 +458,10 @@ def compare_losses(regex_str):
     ax.legend()
 
 def load_model(loss_file, weights_file):
-    pdb.set_trace()
     f = h5py.File(loss_file, 'r')
     f_sizes = f.attrs['f_sizes']
     nb_filters = f.attrs['nb_filters']
-    model_name = loss_file.replace('loss', 'epoch{0}')
+    model_name = os.path.split(loss_file)[-1].replace('loss', 'epoch{0}')
     model_nb = int(f.attrs['model_nb'])
 
     def str2list(sList):
