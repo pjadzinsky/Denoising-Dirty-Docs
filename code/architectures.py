@@ -373,6 +373,7 @@ class model(object):
         g['loss'] = self.loss
         g.attrs['f_sizes'] = self.f_sizes
         g.attrs['nb_filters'] = self.nb_filters
+        pdb.set_trace()
         g.attrs['model_nb'] = self.model_nb
 
         f.flush()
@@ -461,21 +462,25 @@ def load_model(loss_file, weights_file):
     f_sizes = f.attrs['f_sizes']
     nb_filters = f.attrs['nb_filters']
     model_name = loss_file.replace('loss', 'epoch{0}')
+    model_nb = int(f.attrs['model_nb'])
+
+    def str2list(sList):
+        return [int(i) for i in sList[1:-1].split(',')]
 
     if type(f_sizes) == np.ndarray:
         f_sizes = f_sizes.tolist()
+    elif type(f_sizes) == np.string_:
+        f_sizes = str2list(f_sizes)
     else:
         f_sizes = int(f_sizes)
 
     if type(nb_filters) == np.ndarray:
         nb_filters = nb_filters.tolist()
+    elif type(nb_filters) == np.string_:
+        nb_filters = str2list(nb_filters)
     else:
         nb_filters = int(nb_filters)
 
-    try:
-        model_nb = int(f.attrs['model_nb'])
-    except:
-        model_nb=1
 
     f.close()
     mymodel = model(model_nb, f_sizes, nb_filters, model_name)
