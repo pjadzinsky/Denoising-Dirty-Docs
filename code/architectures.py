@@ -313,10 +313,11 @@ class model(object):
                         name on figure, if None will default to 'Im_#'
 
         '''
+        pdb.set_trace()
         pathin = self.pred_path
         pathout = self.pred_path
         if fig_name is None:
-            fig_name = 'Im_{0}'.format(nb_img)
+            fig_name = '{0}_im{1}.png'.format(self.model_name, nb_img)
 
         regex = re.compile(self.pred_regex)
         pred_files = [f for f in os.listdir(pathin) if regex.search(f)]
@@ -441,7 +442,7 @@ def compare_losses(regex_str):
 
     fig, ax = plt.subplots(num='loss')
 
-    loss_files = [f for f in os.listdir() if regex.search(f)]
+    loss_files = [f for f in os.listdir('model_weights') if regex.search(f)]
     for f_name in loss_files:
         f = h5py.File(f_name, 'r')
         print(f_name)
@@ -457,7 +458,7 @@ def compare_losses(regex_str):
 
     ax.legend()
 
-def load_model(loss_file, weights_file):
+def generate_model_from_loss_file(loss_file):
     f = h5py.File(loss_file, 'r')
     f_sizes = f.attrs['f_sizes']
     nb_filters = f.attrs['nb_filters']
@@ -485,10 +486,4 @@ def load_model(loss_file, weights_file):
     f.close()
     mymodel = model(model_nb, f_sizes, nb_filters, model_name)
     
-    try:
-        mymodel.graph.load_weights(weights_file)
-    except:
-        pass
-
     return mymodel
-    
