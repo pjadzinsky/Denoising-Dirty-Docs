@@ -16,7 +16,7 @@ import re
 import os
 
 class model(object):
-    def __init__(self, model, f_sizes, nb_filters, model_name, weights_file=None):
+    def __init__(self, model, f_sizes, nb_filters, model_name, weights_file=None, extra_images=None):
         self.model_nb = model
         self.f_sizes = f_sizes
         self.nb_filters = nb_filters
@@ -26,6 +26,7 @@ class model(object):
         self.pred_name = self.model_name.replace('.hdf5', '_pred.hdf5')
         self.pred_path = 'predictions'
         self.pred_regex = self.model_regex.replace('.hdf5', '_pred.hdf5')
+        self.extra_images = extra_images
 
         if model_name.endswith('epoch{0}.hdf5'):
             pass
@@ -47,6 +48,16 @@ class model(object):
                 name='mean_permuted', input='mean')
         
         layers_to_concat = ['input_permuted', 'mean_permuted']
+
+        if extra_images is not None:
+            graph.add_input(name='input2', ndim=4)
+            
+            graph.add_node(Permute((2,3,1)),
+                    name='input2_permuted', input='input2')
+
+            layers_to_concat.append('input2_permuted')
+
+        nb_extra_images = len(layers_to_concat)
 
         if model==1:
             if type(f_sizes) == int:
@@ -158,7 +169,7 @@ class model(object):
                     name='concatenation',
                     input='concatenation_permuted')
 
-            graph.add_node(Convolution2D(1, sum(nb_filters[1:]) + 2, 1, 1),
+            graph.add_node(Convolution2D(1, sum(nb_filters[1:]) + nb_extra_images, 1, 1),
                     name='final_conv',
                     input='concatenation')
 
@@ -186,13 +197,17 @@ class model(object):
         # and X[0,:,:,:] is an image (shapes for Y are the same as for X)
         #pdb.set_trace()
         
+        io_dict = {'input':X, 'output':Y}
+
+        if self.extra_images is not None:
+            io_dict['input2'] = self.extra_images
+
         #savemodels = SaveModels()
         history = History()
         checkpointer = MyModelCheckpoint(self.model_path, self.model_name, 0, save_models, verbose=1, save_best_only=False)
         #checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
 
-        #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred])
-        self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1,
+        self.graph.fit(io_dict, nb_epoch=nb_epoch, batch_size=32, verbose=1,
                 callbacks=[checkpointer, history], validation_split=validation_split)
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
         self.loss = np.array(history.history['output'])
@@ -249,6 +264,12 @@ class model(object):
         '''
         model = self.graph
 
+        pdb.set_trace()
+        io_dict = {'input':data}
+
+        if self.extra_images is not None:
+            io_dict['input2'] = self.extra_images
+
         regex = re.compile(self.model_regex)
         model_files = [f for f in os.listdir(self.model_path) if regex.search(f)]
         
@@ -258,7 +279,7 @@ class model(object):
         for f in model_files:
             model.load_weights(os.path.join(self.model_path, f))
 
-            prediction = model.predict({'input':data})['output']
+            prediction = model.predict(io_dict)['output']
 
             #plt.imshow(prediction['output'][0,0,:,:], cmap=cm.Greys_r)
             #plt.savefig('prediction_model{0}_epoch{1}.png'.format(nb_model, epoch))
