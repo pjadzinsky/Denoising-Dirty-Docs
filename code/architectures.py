@@ -264,7 +264,6 @@ class model(object):
         '''
         model = self.graph
 
-        pdb.set_trace()
         io_dict = {'input':data}
 
         if self.extra_images is not None:
@@ -316,7 +315,7 @@ class model(object):
         pathin = self.pred_path
         pathout = self.pred_path
         if fig_name is None:
-            fig_name = '{0}_im{1}.png'.format(self.model_name, nb_img)
+            fig_name = self.model_name.replace('epoch{0}.hdf5', 'im{0}.png').format(nb_img)
 
         regex = re.compile(self.pred_regex)
         pred_files = [f for f in os.listdir(pathin) if regex.search(f)]
