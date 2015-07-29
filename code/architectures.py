@@ -313,7 +313,6 @@ class model(object):
                         name on figure, if None will default to 'Im_#'
 
         '''
-        pdb.set_trace()
         pathin = self.pred_path
         pathout = self.pred_path
         if fig_name is None:
@@ -432,20 +431,23 @@ class MeanImage(Layer):
         out = tensor.tensordot(X, out, [[2,3], [0,1]])
         return out
 
-def compare_losses(regex_str):
+def compare_losses(regex_str, path='model_weights'):
     '''
     load all hdf5 files that match regex_str and plot the 'loss' for each of them
     '''
     import re
 
     regex = re.compile(regex_str)
+    pdb.set_trace()
 
     fig, ax = plt.subplots(num='loss')
 
-    loss_files = [f for f in os.listdir('model_weights') if regex.search(f)]
+    loss_files = [f for f in os.listdir(path) if regex.search(f)]
+    print('comparing loss for files: {0}'.format(str(loss_files)))
+
     for f_name in loss_files:
-        f = h5py.File(f_name, 'r')
-        print(f_name)
+        f = h5py.File(os.path.join(path, f_name), 'r')
+        print(os.path.join(path,f_name))
         #pdb.set_trace()
         try:
             loss = np.array(f['loss'])
