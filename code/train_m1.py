@@ -1,6 +1,6 @@
 import utils, architectures, load_data
 
-train, cleaned= load_data.load_data(3)
+train, cleaned= load_data.load_data(['train', 'train_cleaned'])
 
 epochs = 101
 save_every_epochs = 10

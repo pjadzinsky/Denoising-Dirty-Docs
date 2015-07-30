@@ -16,22 +16,21 @@ import re
 import os
 
 class model(object):
-    def __init__(self, model, f_sizes, nb_filters, model_name, weights_file=None, extra_images=None):
-        self.model_nb = model
+    def __init__(self, model_nb, f_sizes, nb_filters, model_prefix, weights_file=None, compile_model=True):
+        self.model_nb = model_nb
         self.f_sizes = f_sizes
         self.nb_filters = nb_filters
-        self.model_name = model_name
-        self.model_path = 'model_weights'
-        self.model_regex = self.model_name.replace('{0}', '\d+')
-        self.pred_name = self.model_name.replace('.hdf5', '_pred.hdf5')
-        self.pred_path = 'predictions'
-        self.pred_regex = self.model_regex.replace('.hdf5', '_pred.hdf5')
-        self.extra_images = extra_images
+        self.model_prefix   = model_prefix
+        self.model_path     = 'model_weights'
+        self.pred_path      = 'predictions'
+        self.model_name     = model_prefix + '_epoch{0}.hdf5'
+        self.pred_name      = model_prefix + '_epoch{0}_pred.hdf5'
+        self.model_regex    = model_prefix + '_epoch\d+.hdf5'
+        self.pred_regex     = model_prefix + '_epoch\d+_pred.hdf5'
+        self.loss_file      = model_prefix + '_loss.hdf5'
 
-        if model_name.endswith('epoch{0}.hdf5'):
-            pass
-        else:
-            raise ValueError('model_name should end with "epoch{0}.hdf5"')
+        if not compile_model:
+            return 
 
         graph = Graph()
 
@@ -49,7 +48,7 @@ class model(object):
         
         layers_to_concat = ['input_permuted', 'mean_permuted']
 
-        if extra_images is not None:
+        if model_nb in [3]:
             graph.add_input(name='input2', ndim=4)
             
             graph.add_node(Permute((2,3,1)),
@@ -59,7 +58,7 @@ class model(object):
 
         nb_extra_images = len(layers_to_concat)
 
-        if model==1:
+        if model_nb==1:
             if type(f_sizes) == int:
                 f_sizes = [f_sizes]
             
@@ -115,7 +114,7 @@ class model(object):
 
             graph.add_output(name='output', input='activations_2')
 
-        elif model==2:
+        elif model_nb in [2,3]:
             '''
             in this model, each layer only has one convolutional pathway defined by f_size[i], nb_filters[i]
             At the end, the output of all conv pathways gets concat together along with original image, mean,
@@ -180,27 +179,28 @@ class model(object):
             graph.add_output(name='output', input='sigmoid')
 
         else:
-            raise ValueError('Model {0} not recognized'.format(model))
+            raise ValueError('Model {0} not recognized'.format(model_nb))
 
         sgd = SGD(lr=.1)
         graph.compile(sgd, {'output':'mse'})
 
         self.graph = graph
 
-    def model_init(self, weights_file=None):
-        if weights_file is not None:
-            self.graph.load_weights(weights_file)
             
-            
-    def fit(self, X, Y, nb_epoch, save_models=[], logs={}, validation_split=0.1):
+    def fit(self, X, Y, nb_epoch, save_models=[], logs={}, validation_split=0.1, X2=None):
         # X, Y are 4D arrays such that X.shape is (number of samples, color channels, height, width)
         # and X[0,:,:,:] is an image (shapes for Y are the same as for X)
-        #pdb.set_trace()
-        
+        loss_file = os.path.join(self.model_path, self.loss_file)
+        if os.path.isfile(loss_file):
+            overwrite = confirm_overwrite_file(loss_file)
+
+            if overwrite=='n':
+                return 'Aborting: do not overwrite'
+
         io_dict = {'input':X, 'output':Y}
 
-        if self.extra_images is not None:
-            io_dict['input2'] = self.extra_images
+        if X2 is not None:
+            io_dict['input2'] = X2
 
         #savemodels = SaveModels()
         history = History()
@@ -212,66 +212,29 @@ class model(object):
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
         self.loss = np.array(history.history['output'])
 
-        self.make_loss_file()
-
-        return self
-
-    def train(self, X, Y, nb_epoch, save_models=[]):
-        # X, Y are 4D arrays such that X.shape is (number of samples, color channels, height, width)
-        # and X[0,:,:,:] is an image (shapes for Y are the same as for X)
-        #pdb.set_trace()
-        
-        datagen = ImageDataGenerator(
-                width_shift_range=0.1
-                )
-
-        datagen.fit(X)
-        model = self.graph
-
-        #savemodels = SaveModels()
-        #history = History()
-        #checkpointer = MyModelCheckpoint(self.model_path, self.model_name, 0, save_models, verbose=1, save_best_only=False)
-
-        history_loss = []
-        for e in range(nb_epoch):
-            print('Epoch', e)
-            batch_loss = []
-            # batch train with realtime data augmentation
-            for X_batch, Y_batch in datagen.flow(X, Y):
-                loss = model.train_on_batch({'input':X_batch, 'output':Y_batch})
-                batch_loss.append(loss)
+        if len(save_models):
+            self.make_loss_file()
 
 
-            history_loss.append(np.mean(batch_loss))
-            print(history_loss[-1])
-
-            if e in save_models:
-                model.save_weights(self.model_name.format(e))
-
-        # save loss history to file
-        output = np.array(history_loss)
-        f = h5py.File('model{0}_loss.hdf5'.format(self.model_nb), 'w')
-        g = f.parent
-        dset = g.create_dataset('output', output.shape, dtype=output.dtype)
-        dset[:] = output
-        f.flush()
-        f.close()
-
-    def save_predictions(self, data):
+    def save_predictions(self, X, X2=None):
         '''
         Given model_regex to match saved model's weights as hdf5 files, load the weights for each hdf5 file
-        and use them to predict 'data' saving the outputs to hdf5 input file + "_pred"
+        and use them to predict 'X' saving the outputs to hdf5 input file + "_pred"
         '''
         model = self.graph
 
-        io_dict = {'input':data}
+        io_dict = {'input':X}
 
-        if self.extra_images is not None:
-            io_dict['input2'] = self.extra_images
+        if X2 is not None:
+            if type(X2)==np.ndarray:
+                io_dict['input2'] = X2
+            else:
+                raise ValueError("can't recognize data type")
 
         regex = re.compile(self.model_regex)
         model_files = [f for f in os.listdir(self.model_path) if regex.search(f)]
         
+        pdb.set_trace()
         if not os.path.isdir(self.pred_path):
             os.mkdir(self.pred_path)
 
@@ -320,11 +283,9 @@ class model(object):
         regex = re.compile(self.pred_regex)
         pred_files = [f for f in os.listdir(pathin) if regex.search(f)]
 
-        #pdb.set_trace()
         if not os.path.isdir(pathout):
             os.mkdir(pathout)
 
-        #pdb.set_trace()
         fig, ax = plt.subplots(num='images_to_save', nrows=nrows, ncols=ncols)
 
         if ax.ndim==1:
@@ -353,32 +314,33 @@ class model(object):
         fig.savefig(os.path.join(pathout, fig_name))
 
     def make_loss_file(self):
-        path = self.model_path
-        loss_name = self.model_name.replace('epoch{0}.hdf5', 'loss.hdf5')
-        loss_name = os.path.join(path, loss_name)
-        if os.path.isfile(loss_name):
-            import sys
-
-            get_input = input
-            if sys.version_info[:2] <= (2, 7):
-                get_input = raw_input
-            
-            overwrite = get_input('[WARNING] %s already exists - overwrite? [y/n]' % (loss_name))
-            while overwrite not in ['y', 'n']:
-                overwrite = get_input('Enter "y" (overwrite) or "n" (cancel).')
-            if overwrite == 'n':
-                return
-
-        f = h5py.File(loss_name, 'w')
+        ''' 
+        write into a loss file the ndarray 'loss' and all necessary
+        parameters to be able to re-initialize the model
+        '''
+        f = h5py.File(os.path.join(self.model_path, self.loss_file), 'w')
         g = f.parent
         g['loss'] = self.loss
-        g.attrs['f_sizes'] = self.f_sizes
-        g.attrs['nb_filters'] = self.nb_filters
-        g.attrs['model_nb'] = self.model_nb
+        for k in ['model_nb', 'f_sizes', 'nb_filters', 'model_prefix']:
+            try:
+                g.attrs[k] = getattr(self, k)
+            except:
+                pass
 
         f.flush()
         f.close()
         
+    def model_definition_str(self):
+        '''
+        Generate some type of nice string with the relevant model parameters
+        '''
+        text = 'M{0}'.format(self.model_nb)
+
+        for size, nb in zip(self.f_sizes, self.nb_filters):
+            text = text + ('_{0}({1})'.format(size, nb))
+
+        return text
+
 class MyModelCheckpoint(ModelCheckpoint):
     '''
     Save models as it learns. Models are saved under self.path with name self.name after relapcing a literal "{0}"
@@ -437,34 +399,38 @@ def compare_losses(regex_str, path='model_weights'):
     import re
 
     regex = re.compile(regex_str)
-    pdb.set_trace()
 
     fig, ax = plt.subplots(num='loss')
 
     loss_files = [f for f in os.listdir(path) if regex.search(f)]
     print('comparing loss for files: {0}'.format(str(loss_files)))
 
+    regex = re.compile('\d+')     # extract number from hdf5 file name
     for f_name in loss_files:
-        f = h5py.File(os.path.join(path, f_name), 'r')
-        print(os.path.join(path,f_name))
-        #pdb.set_trace()
+        loss_file = os.path.join(path, f_name)
+        model = generate_model_from_loss_file(loss_file, compile_model=False)
+        #f = h5py.File(os.path.join(path, f_name), 'r')
         try:
-            loss = np.array(f['loss'])
-            label = f_name.replace('.hdf5', '').replace('_loss', '')
-            ax.plot(loss, label=label)
+            #loss = np.array(f['loss'])
+            #label = f_name.replace('.hdf5', '').replace('_loss', '')
+            file_nb = regex.findall(f_name)[0]
+            label = '#' + file_nb + model.model_definition_str()
+            ax.plot(model.loss, label=label)
         except:
             pass
 
-        f.close()
-
     ax.legend()
 
-def generate_model_from_loss_file(loss_file):
+def generate_model_from_loss_file(loss_file, compile_model=True):
+    # load from loss_file all needed parameters to recreate model initialization
+    # model, f_sizes, nb_filters, model_name, weights_file=None):
+    pdb.set_trace()
     f = h5py.File(loss_file, 'r')
+    model_nb = int(f.attrs['model_nb'])
     f_sizes = f.attrs['f_sizes']
     nb_filters = f.attrs['nb_filters']
-    model_name = os.path.split(loss_file)[-1].replace('loss', 'epoch{0}')
-    model_nb = int(f.attrs['model_nb'])
+    model_prefix = f.attrs['model_prefix']
+    loss = np.array(f['loss'])
 
     def str2list(sList):
         return [int(i) for i in sList[1:-1].split(',')]
@@ -485,6 +451,30 @@ def generate_model_from_loss_file(loss_file):
 
 
     f.close()
-    mymodel = model(model_nb, f_sizes, nb_filters, model_name)
+    #if compile_model:
+
+    pdb.set_trace()
+    mymodel = model(model_nb, f_sizes, nb_filters, model_prefix,
+            compile_model=compile_model)
+    #else:
+    #    mymodel['model_nb'] = model_nb
+    #    mymodel['f_sizes = f_sizes
+    #    mymodel.nb_filters = nb_filters
+    #    mymodel.model_name = model_name
+    #    mymodel.extra_images_path = extra_images_path
     
+    mymodel.loss = loss
     return mymodel
+
+def confirm_overwrite_file(file):
+    import sys
+
+    get_input = input
+    if sys.version_info[:2] <= (2, 7):
+        get_input = raw_input
+    
+    overwrite = get_input('[WARNING] %s already exists - overwrite? [y/n]' % (file))
+    while overwrite not in ['y', 'n']:
+        overwrite = get_input('Enter "y" (overwrite) or "n" (cancel).')
+
+    return overwrite
