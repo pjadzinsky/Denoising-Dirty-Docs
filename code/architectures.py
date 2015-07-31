@@ -191,6 +191,11 @@ class model(object):
         # X, Y are 4D arrays such that X.shape is (number of samples, color channels, height, width)
         # and X[0,:,:,:] is an image (shapes for Y are the same as for X)
         loss_file = os.path.join(self.model_path, self.loss_file)
+        try:
+            next_epoch = self.last_epoch+1
+        except:
+            next_epoch = 0
+
         if os.path.isfile(loss_file):
             overwrite = confirm_overwrite_file(loss_file)
 
@@ -204,17 +209,31 @@ class model(object):
 
         #savemodels = SaveModels()
         history = History()
-        checkpointer = MyModelCheckpoint(self.model_path, self.model_name, 0, save_models, verbose=1, save_best_only=False)
+        checkpointer = MyModelCheckpoint(self.model_path, self.model_name, next_epoch, save_models, verbose=1, save_best_only=False)
         #checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
 
         self.graph.fit(io_dict, nb_epoch=nb_epoch, batch_size=32, verbose=1,
                 callbacks=[checkpointer, history], validation_split=validation_split)
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
-        self.loss = np.array(history.history['output'])
+        
+        try:
+            self.loss = np.concatenate((self.loss, np.array(history.history['output'])), axis=0)
+        except:
+            self.loss = np.array(history.history['output'])
 
         if len(save_models):
             self.make_loss_file()
 
+    def continue_fit(self, weights_file, X, Y, nb_epoch, save_models=[], logs={}, validation_split=0.1, X2=None):
+        '''
+        load weights and continue fitting after adjusting self.last_epoch and self.loss
+        '''
+        self.graph.load_weights(weights_file)
+
+        regex = re.compile('\d+')
+        self.last_epoch = int(regex.findall(weights_file)[1])
+        
+        self.fit(X, Y, nb_epoch, save_models=save_models, logs=logs, validation_split=validation_split, X2=X2)
 
     def save_predictions(self, X, X2=None):
         '''
@@ -393,8 +412,9 @@ class MyModelCheckpoint(ModelCheckpoint):
 
     def on_epoch_end(self, epoch, logs={}):
         save_epochs = self.save_epochs
+        epoch_offset = self.epoch_offset
         if epoch in save_epochs:
-            self.filepath = os.path.join(self.path, self.name.format(epoch))
+            self.filepath = os.path.join(self.path, self.name.format(epoch + epoch_offset))
             super(MyModelCheckpoint, self).on_epoch_end(epoch, logs)
         
 
@@ -427,7 +447,7 @@ class MeanImage(Layer):
         out = tensor.tensordot(X, out, [[2,3], [0,1]])
         return out
 
-def compare_losses(regex_str, path='model_weights'):
+def compare_losses(regex_str='.*loss.*', path='model_weights'):
     '''
     load all hdf5 files that match regex_str and plot the 'loss' for each of them
     '''
@@ -459,7 +479,6 @@ def compare_losses(regex_str, path='model_weights'):
 def generate_model_from_loss_file(loss_file, compile_model=True):
     # load from loss_file all needed parameters to recreate model initialization
     # model, f_sizes, nb_filters, model_name, weights_file=None):
-    pdb.set_trace()
     f = h5py.File(loss_file, 'r')
     model_nb = int(f.attrs['model_nb'])
     f_sizes = f.attrs['f_sizes']
@@ -488,9 +507,10 @@ def generate_model_from_loss_file(loss_file, compile_model=True):
     f.close()
     #if compile_model:
 
-    pdb.set_trace()
     mymodel = model(model_nb, f_sizes, nb_filters, model_prefix,
             compile_model=compile_model)
+
+    mymodel.loss = loss
     #else:
     #    mymodel['model_nb'] = model_nb
     #    mymodel['f_sizes = f_sizes
@@ -498,7 +518,6 @@ def generate_model_from_loss_file(loss_file, compile_model=True):
     #    mymodel.model_name = model_name
     #    mymodel.extra_images_path = extra_images_path
     
-    mymodel.loss = loss
     return mymodel
 
 def confirm_overwrite_file(file):

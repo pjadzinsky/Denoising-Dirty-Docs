@@ -212,7 +212,7 @@ def process_folder(path_str, filtered_str, thresh_str, threshold = 0.7):
         misc.imsave(path.join(filtered_str, f), filtered)
         misc.imsave(path.join(thresh_str, f), thresh)
 """
-def threshold_lines(im):
+def avg_lines(im):
     mean_im = im.mean(axis=1, keepdims=True)
 
     mean_im -= mean_im.mean()
@@ -222,7 +222,7 @@ def threshold_lines(im):
 
 def process_folder(input_path, output_path, func, *vargs, **kargs):
     '''
-    for each image in input_path, do out_im = func(im, **kwords) and save out_im in output_path
+    for each image in input_path, do out_im = func(im, *vargs, **kargs) and save out_im in output_path
     '''
     pdb.set_trace()
     if not path.isdir(output_path):
@@ -234,7 +234,7 @@ def process_folder(input_path, output_path, func, *vargs, **kargs):
                 input_path = {0} is not a valid folder
                 """.format(input_path))
 
-    files = listdir(input_path)
+    files = [f for f in listdir(input_path) if f.endswith('.png')]
     
     for f in files:
         pil_object = PIL.Image.open(path.join(input_path,f))
