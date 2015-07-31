@@ -234,7 +234,7 @@ class model(object):
         regex = re.compile(self.model_regex)
         model_files = [f for f in os.listdir(self.model_path) if regex.search(f)]
         
-        pdb.set_trace()
+        #pdb.set_trace()
         if not os.path.isdir(self.pred_path):
             os.mkdir(self.pred_path)
 
@@ -282,6 +282,7 @@ class model(object):
 
         regex = re.compile(self.pred_regex)
         pred_files = [f for f in os.listdir(pathin) if regex.search(f)]
+        pred_files.sort()
 
         if not os.path.isdir(pathout):
             os.mkdir(pathout)
@@ -296,12 +297,15 @@ class model(object):
         ax[0,0].set_title('Original')
         ax[0,0].axis('off')
 
+        regex = re.compile('\d+')
         for i,f in enumerate(pred_files):
             col = np.mod(i+1, ncols)
             row = (i+1)//ncols
             fid = h5py.File(os.path.join(pathin, f), 'r')
+            file_nb = regex.findall(f)[1]
             im = fid['output']
             ax[row, col].imshow(im[nb_img, 0, :, :], cmap=cm.Greys_r)
+            ax[row, col].set_title('epoch '+file_nb)
             ax[row, col].axis('off')
 
             fid.close()
@@ -406,15 +410,14 @@ def compare_losses(regex_str, path='model_weights'):
     print('comparing loss for files: {0}'.format(str(loss_files)))
 
     regex = re.compile('\d+')     # extract number from hdf5 file name
+    #pdb.set_trace()
     for f_name in loss_files:
+        #pdb.set_trace()
         loss_file = os.path.join(path, f_name)
         model = generate_model_from_loss_file(loss_file, compile_model=False)
-        #f = h5py.File(os.path.join(path, f_name), 'r')
         try:
-            #loss = np.array(f['loss'])
-            #label = f_name.replace('.hdf5', '').replace('_loss', '')
             file_nb = regex.findall(f_name)[0]
-            label = '#' + file_nb + model.model_definition_str()
+            label = '#'+file_nb+' '+model.model_definition_str()
             ax.plot(model.loss, label=label)
         except:
             pass
@@ -424,7 +427,7 @@ def compare_losses(regex_str, path='model_weights'):
 def generate_model_from_loss_file(loss_file, compile_model=True):
     # load from loss_file all needed parameters to recreate model initialization
     # model, f_sizes, nb_filters, model_name, weights_file=None):
-    pdb.set_trace()
+    #pdb.set_trace()
     f = h5py.File(loss_file, 'r')
     model_nb = int(f.attrs['model_nb'])
     f_sizes = f.attrs['f_sizes']
@@ -453,7 +456,7 @@ def generate_model_from_loss_file(loss_file, compile_model=True):
     f.close()
     #if compile_model:
 
-    pdb.set_trace()
+    #pdb.set_trace()
     mymodel = model(model_nb, f_sizes, nb_filters, model_prefix,
             compile_model=compile_model)
     #else:
