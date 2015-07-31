@@ -253,7 +253,7 @@ class model(object):
         regex = re.compile(self.model_regex)
         model_files = [f for f in os.listdir(self.model_path) if regex.search(f)]
         
-        pdb.set_trace()
+        #pdb.set_trace()
         if not os.path.isdir(self.pred_path):
             os.mkdir(self.pred_path)
 
@@ -301,6 +301,7 @@ class model(object):
 
         regex = re.compile(self.pred_regex)
         pred_files = [f for f in os.listdir(pathin) if regex.search(f)]
+        pred_files.sort()
 
         if not os.path.isdir(pathout):
             os.mkdir(pathout)
@@ -315,12 +316,15 @@ class model(object):
         ax[0,0].set_title('Original')
         ax[0,0].axis('off')
 
+        regex = re.compile('\d+')
         for i,f in enumerate(pred_files):
             col = np.mod(i+1, ncols)
             row = (i+1)//ncols
             fid = h5py.File(os.path.join(pathin, f), 'r')
+            file_nb = regex.findall(f)[1]
             im = fid['output']
             ax[row, col].imshow(im[nb_img, 0, :, :], cmap=cm.Greys_r)
+            ax[row, col].set_title('epoch '+file_nb)
             ax[row, col].axis('off')
 
             fid.close()
@@ -392,7 +396,7 @@ class model(object):
                     lum = im_data[i]
                     line = '{0}_{1}_{2} {3}'.format(im_number, row, col, lum)
                     print(line)
-                    print(line, file=fout)
+                    #print(line, file=fout)
                         
 
 class MyModelCheckpoint(ModelCheckpoint):
@@ -461,15 +465,14 @@ def compare_losses(regex_str='.*loss.*', path='model_weights'):
     print('comparing loss for files: {0}'.format(str(loss_files)))
 
     regex = re.compile('\d+')     # extract number from hdf5 file name
+    #pdb.set_trace()
     for f_name in loss_files:
+        #pdb.set_trace()
         loss_file = os.path.join(path, f_name)
         model = generate_model_from_loss_file(loss_file, compile_model=False)
-        #f = h5py.File(os.path.join(path, f_name), 'r')
         try:
-            #loss = np.array(f['loss'])
-            #label = f_name.replace('.hdf5', '').replace('_loss', '')
             file_nb = regex.findall(f_name)[0]
-            label = '#' + file_nb + model.model_definition_str()
+            label = '#'+file_nb+' '+model.model_definition_str()
             ax.plot(model.loss, label=label)
         except:
             pass
@@ -511,12 +514,6 @@ def generate_model_from_loss_file(loss_file, compile_model=True):
             compile_model=compile_model)
 
     mymodel.loss = loss
-    #else:
-    #    mymodel['model_nb'] = model_nb
-    #    mymodel['f_sizes = f_sizes
-    #    mymodel.nb_filters = nb_filters
-    #    mymodel.model_name = model_name
-    #    mymodel.extra_images_path = extra_images_path
     
     return mymodel
 
