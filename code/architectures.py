@@ -377,7 +377,7 @@ class model(object):
                     lum = im_data[i]
                     line = '{0}_{1}_{2} {3}'.format(im_number, row, col, lum)
                     print(line)
-                    print(line, file=fout)
+                    #print(line, file=fout)
                         
 
 class MyModelCheckpoint(ModelCheckpoint):
