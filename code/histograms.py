@@ -95,7 +95,7 @@ def train_clean_diff(train, train_cleaned, bins=np.arange(0, 1.025, .05)):
     ax.set_ylabel('Probability')
     fig.savefig('Noise distribution.png', transparent=True)
 
-def get_char_distance(image, plot_flag=False, verbose=0):
+def get_char_distance(image, plot_flag=False, verbose=0, dir='v'):
     # Compute the average distance in pixels between characters
     # Correlate the images with themself and find peak of FFT
 
@@ -104,49 +104,54 @@ def get_char_distance(image, plot_flag=False, verbose=0):
     if plot_flag:
         fig, ax = plt.subplots(num='Correlations', nrows=2)
 
-    filter_size = []
-    #pdb.set_trace()
-    for i in range(2):
-        # i=0   vertical correlation
-        # i=1   horizontal correlation
+    if dir=='h':
+        i=0
+    elif dir=='v':
+        i=1
+    else:
+        raise ValueError("dir not recognized, has to be either 'v' or 'h'")
 
-        line = image.mean(axis=i)
-        line -= line.mean()
+    # i=0   horizontal correlation
+    # i=1   vertical correlation
 
-        # I want to do a circular correlation. I'm going to paste all but one point of 
-        # line to itself making its new length 2*len(line)-1
-        longline = np.concatenate((line[:-1], line))
+    line = image.mean(axis=i)
+    line -= line.mean()
 
-        corr = np.correlate(longline, line)     # default mode is valid, corr will be of length len(line)
+    # I want to do a circular correlation. I'm going to paste all but one point of 
+    # line to itself making its new length 2*len(line)-1
+    longline = np.concatenate((line[:-1], line))
 
-        # compute the FFT 
-        fft = rfft(corr)
-        freq = rfftfreq(len(corr))
+    corr = np.correlate(longline, line)     # default mode is valid, corr will be of length len(line)
 
-        freq_of_max = freq[fft.argmax()]
-        filter_size.append(np.round(1/freq_of_max))
-        if verbose:
-            print('max achieved at freq: {0}'.format(freq_of_max))
-            print('Distance between symbols is {0} pixels'.format(filter_size[0]))
+    # compute the FFT 
+    fft = rfft(corr)
+    freq = rfftfreq(len(corr))
 
-        if plot_flag:
-            if i==0:
-                label = 'vertical'
-            else:
-                label = 'horizontal'
+    freq_of_max = freq[fft.argmax()]
+    filter_size = np.round(1/freq_of_max)
 
-            ax[0].plot(corr, lw=2, label = label)
-            ax[0].set_xlabel('Pixels')
-            ax[0].legend(loc='upper center')
-        
-            ax[1].plot(freq, fft, lw=2, label= label)
-            ax[1].set_xlabel('Frequency')
-            ax[1].legend(loc='upper center')
+    if verbose:
+        print('max achieved at freq: {0}'.format(freq_of_max))
+        print('Distance between symbols is {0} pixels'.format(filter_size))
+
+    if plot_flag:
+        if i==0:
+            label = 'vertical'
+        else:
+            label = 'horizontal'
+
+        ax[0].plot(corr, lw=2, label = label)
+        ax[0].set_xlabel('Pixels')
+        ax[0].legend(loc='upper center')
+    
+        ax[1].plot(freq, fft, lw=2, label= label)
+        ax[1].set_xlabel('Frequency')
+        ax[1].legend(loc='upper center')
 
     if plot_flag:
         fig.savefig('Correlations.png')
 
-    return np.array(filter_size) 
+    return filter_size
 
 def filter_image(image, filter_size, threshold, plot_flag=False):
     '''
@@ -173,7 +178,7 @@ def filter_image(image, filter_size, threshold, plot_flag=False):
         fig.savefig('filtered image')
     
     return filtered, thresh
-
+"""
 def process_folder(path_str, filtered_str, thresh_str, threshold = 0.7):
     '''
     for each image in the folder, compute its filter_size and use it to filter the image
@@ -206,3 +211,35 @@ def process_folder(path_str, filtered_str, thresh_str, threshold = 0.7):
         
         misc.imsave(path.join(filtered_str, f), filtered)
         misc.imsave(path.join(thresh_str, f), thresh)
+"""
+def threshold_lines(im):
+    mean_im = im.mean(axis=1, keepdims=True)
+
+    mean_im -= mean_im.mean()
+
+    final = np.tensordot(mean_im, np.ones((1, im.shape[1])), (1,0))
+    return final
+
+def process_folder(input_path, output_path, func, *vargs, **kargs):
+    '''
+    for each image in input_path, do out_im = func(im, **kwords) and save out_im in output_path
+    '''
+    pdb.set_trace()
+    if not path.isdir(output_path):
+        mkdir(output_path)
+
+    if not path.isdir(input_path):
+        raise ValueError(
+                """
+                input_path = {0} is not a valid folder
+                """.format(input_path))
+
+    files = listdir(input_path)
+    
+    for f in files:
+        pil_object = PIL.Image.open(path.join(input_path,f))
+        im = np.array(pil_object.getdata()).reshape(pil_object.size[::-1])
+        
+        out_im = func(im, *vargs, **kargs)
+        
+        misc.imsave(path.join(output_path, f), out_im)

@@ -345,6 +345,41 @@ class model(object):
 
         return text
 
+    @staticmethod
+    def create_output(folder_out):
+        '''
+        Generate contest output
+
+        each pixel from each image gets: im#_row#_col# pix_value
+        
+        inputs:
+        -------
+            folder_out:     str
+                            folder with all the images after passing through the model
+        '''
+        import PIL.Image
+
+        regex = re.compile('\d+')
+
+        all_files = [im for im in os.listdir(folder_out) if im.endswith('.png')]
+        
+        pdb.set_trace()
+        with open(os.path.join(folder_out, 'submission.txt'), 'w') as fout:
+            for f in all_files:
+                im = PIL.Image.open(os.path.join(folder_out,f))
+                width, height = im.size
+                im_number = regex.findall(f)[0]
+                
+                im_data = im.getdata()      # line 1 follows line 0 and so on
+                for i in range(height*width):
+                    row = i//width
+                    col = int(np.mod(i, width))
+                    lum = im_data[i]
+                    line = '{0}_{1}_{2} {3}'.format(im_number, row, col, lum)
+                    print(line)
+                    print(line, file=fout)
+                        
+
 class MyModelCheckpoint(ModelCheckpoint):
     '''
     Save models as it learns. Models are saved under self.path with name self.name after relapcing a literal "{0}"
