@@ -4,7 +4,6 @@ train/
 train_cleaned/
 test/
 *.hdf5
-*.png
 *.pyc
 *.swo
 *.swp

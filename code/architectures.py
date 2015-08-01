@@ -274,7 +274,7 @@ class model(object):
             fout.flush()
             fout.close()
 
-    def save_images(self, ori_set, nrows, ncols, nb_img, fig_name=None):
+    def save_images(self, ori_set, nrows, ncols, nb_img, fig_name=None, epoch_list=None):
         '''
         open all hdf5 files that match self.pred_regex, extract nb_img from them and plot them with the 
         given number of rows and cols
@@ -293,6 +293,9 @@ class model(object):
             fig_name:   str
                         name on figure, if None will default to 'Im_#'
 
+
+            epoch_list: list of int
+                        list of epochs to display if they exist
         '''
         pathin = self.pred_path
         pathout = self.pred_path
@@ -317,17 +320,21 @@ class model(object):
         ax[0,0].axis('off')
 
         regex = re.compile('\d+')
-        for i,f in enumerate(pred_files):
-            col = np.mod(i+1, ncols)
-            row = (i+1)//ncols
-            fid = h5py.File(os.path.join(pathin, f), 'r')
-            file_nb = regex.findall(f)[1]
-            im = fid['output']
-            ax[row, col].imshow(im[nb_img, 0, :, :], cmap=cm.Greys_r)
-            ax[row, col].set_title('epoch '+file_nb)
-            ax[row, col].axis('off')
+        i=0
+        for f in pred_files:
+            epoch_nb = int(regex.findall(f)[1])
+            if epoch_list is None or epoch_nb in epoch_list:
+                print epoch_nb
+                col = np.mod(i+1, ncols)
+                row = (i+1)//ncols
+                fid = h5py.File(os.path.join(pathin, f), 'r')
+                im = fid['output']
+                ax[row, col].imshow(im[nb_img, 0, :, :], cmap=cm.Greys_r)
+                ax[row, col].set_title('epoch {0}'.format(epoch_nb))
+                ax[row, col].axis('off')
 
-            fid.close()
+                fid.close()
+                i += 1
 
             #if we have more predictions than requested panels break
             if i+2 == nrows*ncols:      # +2 because: one +1 comes from the fact that ax[0,0] is the original image
