@@ -235,7 +235,7 @@ class model(object):
         
         self.fit(X, Y, nb_epoch, save_models=save_models, logs=logs, validation_split=validation_split, X2=X2)
 
-    def save_predictions(self, X, X2=None):
+    def save_predictions(self, X, X2=None, model_regex=None):
         '''
         Given model_regex to match saved model's weights as hdf5 files, load the weights for each hdf5 file
         and use them to predict 'X' saving the outputs to hdf5 input file + "_pred"
@@ -250,7 +250,10 @@ class model(object):
             else:
                 raise ValueError("can't recognize data type")
 
-        regex = re.compile(self.model_regex)
+        if model_regex is None:
+            model_regex = self.model_regex
+
+        regex = re.compile(model_regex)
         model_files = [f for f in os.listdir(self.model_path) if regex.search(f)]
         
         #pdb.set_trace()
@@ -337,7 +340,7 @@ class model(object):
                 i += 1
 
             #if we have more predictions than requested panels break
-            if i+2 == nrows*ncols:      # +2 because: one +1 comes from the fact that ax[0,0] is the original image
+            if i+1 == nrows*ncols:      # +2 because: one +1 comes from the fact that ax[0,0] is the original image
                                         #           : another +1 comes from the fact that I want to know if I have an ax for next image
                 break
 
