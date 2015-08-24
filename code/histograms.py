@@ -6,6 +6,7 @@ threshold per image such that the frequency of 1s and 0s is mainteined
 '''
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 import code.utils
 from scipy.fftpack import rfft, rfftfreq
 from scipy.signal import convolve2d
@@ -72,7 +73,7 @@ def plot_train_hist(train, train_cleaned, bins=np.arange(0, 1.025, .05)):
     hist3, _ = np.histogram(train_cleaned, normed=True, bins=bins)
 
     #pdb.set_trace()
-    fig, ax = plt.subplots(num=1)
+    fig, ax = plt.subplots(num='luminance_histogram')
     ax.cla()
     ax.plot(bins[:-1], hist1, label='raw', linewidth=3)
     #ax.plot(bins[:-1], hist2, label='normed')
@@ -171,9 +172,9 @@ def filter_image(image, filter_size, threshold, plot_flag=False):
         fig.clf()
         fig, ax = plt.subplots(num='filtered_image', nrows=3)
 
-        ax[0].imshow(image)
-        ax[1].imshow(filtered)
-        ax[2].imshow(thresh)
+        ax[0].imshow(image, cmap=cm.Greys_r)
+        ax[1].imshow(filtered, cmap=cm.Greys_r)
+        ax[2].imshow(thresh, cmap=cm.Greys_r)
 
         fig.savefig('filtered image')
     

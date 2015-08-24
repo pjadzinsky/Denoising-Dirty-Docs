@@ -1,6 +1,7 @@
 from keras.models import Sequential, Graph
 from keras.layers.core import Layer, Dense, Activation, Merge, Reshape, Flatten, Permute
-from keras.layers.convolutional import Convolution2D
+from keras.layers.convolutional import Convolution2D, MaxPooling2D, UpSample2D, ZeroPadding2D
+from keras.layers.extra import ZeroPad
 from keras.optimizers import SGD
 from keras.callbacks import ModelCheckpoint, History, Callback#, SnapshotPrediction
 from keras.regularizers import l2
@@ -178,11 +179,108 @@ class model(object):
 
             graph.add_output(name='output', input='sigmoid')
 
+        elif model_nb in [4]:
+            '''
+            in this model, each layer only has one convolutional pathway defined by f_size[i], nb_filters[i]
+            followed by a MaxPooling layer to reduce the representation size. At the end, the output of all conv
+            pathways gets first expanded back onto the original image space and then they get all concatenated
+            together along with original image, mean, threshold (potentialy more input images) and a single
+            conv along channels is performed prior to sigmoid.
+
+            The max pooling is always done over an area f_size, so that the image shrinks in width and height by 
+            a factor of f_size along each direction. The expansion at the end has to be of size f_size along each
+            direction.
+
+            '''
+
+            if nb_filters[0] != 1:
+                raise ValueError(
+                '''
+                First point in nb_filters and f_sizes refers to the input image.
+                nb_filters[0] = {0} and should be 1,
+                f_sizes[0] is not used and can be any value
+                '''.format(nb_filters[0])
+                )
+
+            if len(f_sizes) != len(nb_filters):
+                raise ValueError('len(f_sizes)={0} and len(nb_filters)={1}, they should be the same'.format(
+                    len(f_sizes), len(nb_filters)))
+
+            # following layer only generates another layer called 'activations_0' that is identical to the input
+            # I'm doing this so that layer activations_0 exists and can be used in the loop below
+            graph.add_node(Activation('linear'),
+                name='activations_0',
+                input='input')
+
+            # loop through all filters and apply them at each stage.
+            for L in range(1, len(f_sizes)):
+                # Layer L
+                # -------
+                # conv layer with nb_filters[L], each of size f_sizes[L]
+                
+                graph.add_node(Convolution2D(nb_filters[L], nb_filters[L-1], f_sizes[L], f_sizes[L], border_mode='same', activation='relu'),
+                        name='scores_{0}'.format(L), input='activations_{0}'.format(L-1))
+
+                # after the Conv2D, the graph has to split in two. 
+                # On one size I want to do MaxPooling to shrink the representation and continue doign Conv-Relu-Pooling
+                # On the other hand, the Conv output has to be expanded back into the original space to be
+                # concatenated at the end with all other layer outputs. The expansion factor needed is the product
+                # of all f_sizes up until this layer
+
+                # Continue with Pooling, the output of this layer will be the input in the next Conv2D
+                graph.add_node(MaxPooling2D(poolsize=(f_sizes[L], f_sizes[L])),
+                        name='activations_{0}'.format(L), input='scores_{0}'.format(L))
+
+                # Expand back to the original space
+                size = np.prod(f_sizes[:L])
+                print("Layer {0} being upsampled by a factor of {1}".format(L, size))
+                graph.add_node(UpSample2D(size=(size,size)),
+                        name='upsampled_{0}'.format(L), input='scores_{0}'.format(L))
+
+                pre_permuted = 'upsampled_{0}'.format(L)
+
+                if L==2:    # TODO include generic logic depending on filters and sizes
+                    graph.add_node(ZeroPad(n=3, dim=2, where='end'),
+                            name='padded_{0}'.format(L), input='upsampled_{0}'.format(L))
+
+                    pre_permuted = 'padded_{0}'.format(L)
+
+                elif L==3:    # TODO include generic logic depending on filters and sizes
+                    graph.add_node(ZeroPad(n=23, dim=2, where='end'),
+                            name='padded_{0}_temp'.format(L), input='upsampled_{0}'.format(L))
+                    graph.add_node(ZeroPad(n=15, dim=3, where='end'),
+                            name='padded_{0}'.format(L), input='padded_{0}_temp'.format(L))
+                    pre_permuted = 'padded_{0}'.format(L)
+
+                graph.add_node(Permute((2,3,1)),
+                        name='upsampled_{0}_permuted'.format(L),
+                        input=pre_permuted)
+
+                layers_to_concat.append('upsampled_{0}_permuted'.format(L))
+
+
+            graph.add_node(Activation('linear'),
+                    name='concatenation_permuted',
+                    inputs=layers_to_concat)
+
+            graph.add_node(Permute((3,1,2)),
+                    name='concatenation',
+                    input='concatenation_permuted')
+
+            graph.add_node(Convolution2D(1, sum(nb_filters[1:]) + nb_extra_images, 1, 1),
+                    name='final_conv',
+                    input='concatenation')
+
+            graph.add_node(Activation('sigmoid'),
+                    name='sigmoid',
+                    input='final_conv')
+
+            graph.add_output(name='output', input='sigmoid')
         else:
             raise ValueError('Model {0} not recognized'.format(model_nb))
 
         sgd = SGD(lr=.1)
-        graph.compile(sgd, {'output':'mse'})
+        graph.compile(sgd, {'output':'mse', 'output':LinesLoss})
 
         self.graph = graph
 
@@ -190,6 +288,7 @@ class model(object):
     def fit(self, X, Y, nb_epoch, save_models=[], logs={}, validation_split=0.1, X2=None):
         # X, Y are 4D arrays such that X.shape is (number of samples, color channels, height, width)
         # and X[0,:,:,:] is an image (shapes for Y are the same as for X)
+        #pdb.set_trace()
         loss_file = os.path.join(self.model_path, self.loss_file)
         try:
             next_epoch = self.last_epoch+1
@@ -209,17 +308,18 @@ class model(object):
 
         #savemodels = SaveModels()
         history = History()
-        checkpointer = MyModelCheckpoint(self.model_path, self.model_name, next_epoch, save_models, verbose=1, save_best_only=False)
+        checkpointer = MyModelCheckpoint(self.model_path, self.model_name, save_models, epoch_offset=next_epoch, verbose=1, save_best_only=False)
         #checkpred = SnapshotPrediction(filepath=model + '_prediction.hdf5')
 
         self.graph.fit(io_dict, nb_epoch=nb_epoch, batch_size=32, verbose=1,
                 callbacks=[checkpointer, history], validation_split=validation_split)
         #self.graph.fit({'input':X, 'output':Y}, nb_epoch=nb_epoch, batch_size=32, verbose=1, callbacks=[checkpointer, checkpred],shuffle=False)
         
+        #pdb.set_trace()
         try:
-            self.loss = np.concatenate((self.loss, np.array(history.history['output'])), axis=0)
+            self.loss = np.concatenate((self.loss, np.array(history.history['loss'])), axis=0)
         except:
-            self.loss = np.array(history.history['output'])
+            self.loss = np.array(history.history['loss'])
 
         if len(save_models):
             self.make_loss_file()
@@ -327,7 +427,7 @@ class model(object):
         for f in pred_files:
             epoch_nb = int(regex.findall(f)[1])
             if epoch_list is None or epoch_nb in epoch_list:
-                print epoch_nb
+                print(epoch_nb)
                 col = np.mod(i+1, ncols)
                 row = (i+1)//ncols
                 fid = h5py.File(os.path.join(pathin, f), 'r')
@@ -345,6 +445,74 @@ class model(object):
                 break
 
         fig.savefig(os.path.join(pathout, fig_name))
+    
+    def save_original_images(self, X, nameout):
+        '''
+        input
+        -----
+            X:          4D numpy.array
+                        either the original image to denoise, the cleaned image, or a secondary input (X2)
+        '''
+        ax = plt.gca()
+        ax.cla()
+        plt.imshow(X[0,0,:,:], cmap=cm.Greys_r)
+        ax = plt.gca()
+        ax.axis('off')
+        fig = plt.gcf()
+        fig.savefig(nameout)
+
+    def save_one_image(self, X, nameout, epoch_list=None, X2=None):
+        '''
+        For each hdf5 file that match self.model_regex, load the weights, predict the output corresponding to 
+        ori_set[nb_img, 0,: :] and save the image with nameout after replacing {0} by the epoch number.
+
+        inputs:
+        ------
+            X:          4D, numpy.array
+                        image to predict
+
+            nameout:    str
+                        name on figure, something like 'fig2_epoch{0}'
+
+
+            epoch_list: list of int
+                        list of epochs to display if they exist
+            
+            X2:         other model input
+        '''
+        pathin = self.model_path
+        pathout = self.pred_path
+
+        regex = re.compile(self.model_regex)
+        model_files = [f for f in os.listdir(pathin) if regex.search(f)]
+
+        if not os.path.isdir(pathout):
+            os.mkdir(pathout)
+
+        regex = re.compile('\d+')
+
+        io_dict = {'input':X}
+
+        if X2 is not None:
+            if type(X2)==np.ndarray:
+                io_dict['input2'] = X2
+            else:
+                raise ValueError("can't recognize data type")
+
+        for f in model_files:
+            epoch_nb = int(regex.findall(f)[1])
+            if epoch_list is None or epoch_nb in epoch_list:
+                print(epoch_nb)
+                self.graph.load_weights(os.path.join(pathin, f))
+
+                prediction = self.graph.predict(io_dict)['output']
+                
+                plt.imshow(prediction[0,0,:,:], cmap=cm.Greys_r)
+                ax = plt.gca()
+                ax.axis('off')
+                ax.set_title('epoch {0}'.format(epoch_nb))
+                fig = plt.gcf()
+                fig.savefig(os.path.join(pathout, nameout.format(epoch_nb)))
 
     def make_loss_file(self):
         ''' 
@@ -375,16 +543,16 @@ class model(object):
         return text
 
     @staticmethod
-    def create_output(folder_out):
+    def create_competition_output(folder_out):
         '''
-        Generate contest output
+        Generate output for Kaggel contest in its required format.
 
-        each pixel from each image gets: im#_row#_col# pix_value
+        For each pixel from each image a line is generated of the form: im#_row#_col# pix_value
         
         inputs:
         -------
             folder_out:     str
-                            folder with all the images after passing through the model
+                            folder with all the predicted images after passing through the model
         '''
         import PIL.Image
 
@@ -413,8 +581,20 @@ class MyModelCheckpoint(ModelCheckpoint):
     '''
     Save models as it learns. Models are saved under self.path with name self.name after relapcing a literal "{0}"
     by the epoch number. An exammple of a valid self.name = 'model5_weights_{0}.hdf5'
+    inputs:
+    ------
+        path:           str
+                        path to save the models
+        name:           str
+                        of the form "model5_{0}.hdf5"
+        save_epochs:    iterable of ints
+                        if epoch matches any of the iterables weights will be saved
+        epoch_offset:   int
+                        if re-training a model, epoch 0 of next training cycle actually corresponds to 
+                        'epoch_offset' in the big picture
+                        
     '''
-    def __init__(self, path, name, epoch_offset, save_epochs, monitor='val_loss', verbose=0, save_best_only=False):
+    def __init__(self, path, name, save_epochs, epoch_offset=0, monitor='val_loss', verbose=0, save_best_only=False):
         super(MyModelCheckpoint, self).__init__('', monitor=monitor, verbose=verbose, save_best_only=save_best_only)
         self.path = path
         self.name = name
@@ -499,6 +679,9 @@ def generate_model_from_loss_file(loss_file, compile_model=True):
     model_prefix = f.attrs['model_prefix']
     loss = np.array(f['loss'])
 
+    if type(model_prefix) == np.bytes_:
+        model_prefix = model_prefix.decode('utf-8')
+
     def str2list(sList):
         return [int(i) for i in sList[1:-1].split(',')]
 
@@ -539,3 +722,8 @@ def confirm_overwrite_file(file):
         overwrite = get_input('Enter "y" (overwrite) or "n" (cancel).')
 
     return overwrite
+
+def LinesLoss(y_true, y_pred):
+    threshold = 0.1
+    alpha = 1
+    return alpha * tensor.where(y_true > threshold, tensor.zeros_like(y_pred), y_pred).mean()

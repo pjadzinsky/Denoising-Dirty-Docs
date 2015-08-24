@@ -1,9 +1,15 @@
 .DS_[Ss]tore
 __pycache__/
-train/
-train_cleaned/
 test/
 *.hdf5
 *.pyc
 *.swo
 *.swp
+test_avg/
+test_cleaned/
+train/
+train_avg/
+train_thresh/
+train_filtered/
+train_cleaned/
+.ipynb_checkpoints/

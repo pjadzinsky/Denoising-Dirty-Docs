@@ -56,3 +56,9 @@ def load_data(folder_list, max_images=None):
         return output[0]
     else:
         return tuple(output)
+
+def reshape_images(im, size):
+    '''
+    either clip rows and cols from im to ensure size or concatenate with mean value pixels.
+    '''
+
